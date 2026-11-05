@@ -68,7 +68,7 @@ function isNoteEmpty(note) {
   if (!note) return false;
   if ((note.title || '').trim() || (note.tags && note.tags.length)) return false;
   const html = String(note.content || '');
-  if (/<img\b/i.test(html)) return false;
+  if (/<(img|input)\b/i.test(html)) return false;
   return !stripHtml(html).replace(/\u00a0/g, ' ').trim();
 }
 
@@ -340,11 +340,159 @@ function removeTag(tag) {
 }
 
 /* ============ 编辑器操作 ============ */
-function insertTodo() {
+/* ---- 待办：按“行”切换 ----
+   编辑器里一行 = editor 的一个顶层块元素。Chromium 的 contenteditable 会把第一行
+   留成裸文本、后续行包成 <div>，也可能出现 <br> 换行，所以先统一成“每行一个 div”。 */
+const BLOCK_TAGS = new Set(['DIV', 'P', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'PRE']);
+
+function normalizeLines() {
+  const nodes = [...el.editor.childNodes];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const div = document.createElement('div');
+    el.editor.insertBefore(div, run[0]);
+    run.forEach(n => div.appendChild(n));
+    run = [];
+  };
+  for (const n of nodes) {
+    if (n.nodeType === 1 && BLOCK_TAGS.has(n.tagName)) { flush(); continue; }
+    run.push(n);
+    if (n.nodeName === 'BR') flush();
+  }
+  flush();
+}
+
+/* 找到节点所在的顶层行 */
+function lineOf(node) {
+  while (node && node.parentNode !== el.editor) node = node.parentNode;
+  return node && node.parentNode === el.editor ? node : null;
+}
+
+const lineCheckbox = (line) =>
+  (line && line.nodeType === 1 && [...line.children].find(c => c.matches('input[type="checkbox"]'))) || null;
+
+function makeTodo(line) {
+  line.classList.add('todo');
+  if (lineCheckbox(line)) return;
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  line.insertBefore(document.createTextNode('\u00a0'), line.firstChild);
+  line.insertBefore(cb, line.firstChild);
+}
+
+function unmakeTodo(line) {
+  const cb = lineCheckbox(line);
+  if (cb) {
+    const next = cb.nextSibling;
+    if (next && next.nodeType === 3) {
+      next.data = next.data.replace(/^\u00a0/, '');
+      if (!next.data) next.remove();
+    }
+    cb.remove();
+  }
+  line.classList.remove('todo');
+  if (!line.className) line.removeAttribute('class');
+  if (!line.firstChild) line.appendChild(document.createElement('br'));
+}
+
+/* 光标若落在复选框前面，挪到复选框后的空格之后 */
+function placeAfterCheckbox(marker) {
+  const prev = marker.previousSibling;
+  if (prev && prev.matches && prev.matches('input[type="checkbox"]')) {
+    const sp = marker.nextSibling;
+    if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) {
+      sp.splitText(1);
+      sp.after(marker);
+    }
+  }
+}
+
+/* Ctrl+Shift+T：把选中的每一行（或光标所在行）转成待办；已全是待办则还原为普通文字 */
+function toggleTodo() {
   el.editor.focus();
-  document.execCommand('insertHTML', false, '<div class="todo"><input type="checkbox">&nbsp;</div>');
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) {
+    const range = document.createRange();
+    range.selectNodeContents(el.editor);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  const range = sel.getRangeAt(0);
+
+  // 用标记节点记住选区，规整 DOM 时它们会跟着文字移动
+  const mkStart = document.createElement('span');
+  const mkEnd = document.createElement('span');
+  const endRange = range.cloneRange();
+  endRange.collapse(false);
+  endRange.insertNode(mkEnd);
+  range.collapse(true);
+  range.insertNode(mkStart);
+
+  normalizeLines();
+  const first = lineOf(mkStart);
+  const last = lineOf(mkEnd);
+  const lines = [];
+  for (let n = first; n; n = n.nextSibling) {
+    if (n.nodeType === 1) lines.push(n);
+    if (n === last) break;
+  }
+
+  const allTodo = lines.every(l => lineCheckbox(l));
+  lines.forEach(l => (allTodo ? unmakeTodo(l) : makeTodo(l)));
+  if (!allTodo) { placeAfterCheckbox(mkStart); placeAfterCheckbox(mkEnd); }
+
+  const r = document.createRange();
+  r.setStartAfter(mkStart);
+  r.setEndBefore(mkEnd);
+  mkStart.remove();
+  mkEnd.remove();
+  sel.removeAllRanges();
+  sel.addRange(r);
   scheduleSave(100);
 }
+
+/* 回车：待办行内回车自动延续为新待办；空待办上回车则退出待办 */
+function caretLine() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) return null;
+  return lineOf(sel.anchorNode);
+}
+
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  const line = caretLine();
+  if (!line || !lineCheckbox(line)) return;
+  if (!line.textContent.replace(/\u00a0/g, ' ').trim()) {
+    e.preventDefault();
+    unmakeTodo(line);
+    const r = document.createRange();
+    r.setStart(line, 0);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    scheduleSave(100);
+  }
+});
+
+el.editor.addEventListener('input', (e) => {
+  if (e.inputType !== 'insertParagraph') return;
+  const line = caretLine();
+  if (!line || lineCheckbox(line)) return;
+  const prev = line.previousElementSibling;
+  if (!(line.classList.contains('todo') || (prev && lineCheckbox(prev)))) return;
+  // 新行继承了 todo 但没有复选框：补上，并把光标放到复选框后
+  makeTodo(line);
+  const sp = lineCheckbox(line).nextSibling;
+  const r = document.createRange();
+  r.setStart(sp, 1);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+});
 
 function insertImageAtCaret(img) {
   const sel = window.getSelection();
@@ -455,7 +603,7 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod || !e.shiftKey) return;
   const key = e.key.toLowerCase();
-  if (key === 't') { e.preventDefault(); insertTodo(); }
+  if (key === 't') { e.preventDefault(); toggleTodo(); }
   else if (key === 'l') { e.preventDefault(); openTagInput(); }
   else if (key === 'i') { e.preventDefault(); pasteClipboardImage(); }
 });
