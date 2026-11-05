@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data:; media-src 'self' file: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>FloatNote</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 便笺主体（四周留出透明边距用于投影） -->
+  <div id="card" class="card">
+    <header class="toolbar" id="toolbar">
+      <div class="toolbar-left">
+        <button class="tbtn circle" id="btn-new" title="新建便笺" aria-label="新建便笺">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.4v9.2M3.4 8h9.2"/></svg>
+        </button>
+        <div class="pill" title="切换便笺">
+          <svg class="pill-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 2.4l5.2 2.7L8 7.8 2.8 5.1 8 2.4z"/>
+            <path d="M2.8 8.1L8 10.8l5.2-2.7"/>
+            <path d="M2.8 11.1L8 13.8l5.2-2.7"/>
+          </svg>
+          <select id="note-switcher"></select>
+          <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
+        </div>
+        <button class="tbtn" id="btn-delete" title="删除当前便笺" aria-label="删除当前便笺">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-right">
+        <button class="tbtn" id="btn-settings" title="设置（透明度/快捷键）" aria-label="设置">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 4.2h11.2M2.4 8h11.2M2.4 11.8h11.2"/><circle cx="6.1" cy="4.2" r="1.5"/><circle cx="10.2" cy="8" r="1.5"/><circle cx="5.2" cy="11.8" r="1.5"/></svg>
+        </button>
+        <button class="tbtn" id="btn-pin" title="窗口置顶" aria-label="窗口置顶">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 2.4h3.8l-.5 3 2 2H4.6l2-2-.5-3z"/><path d="M8 7.4v6.2"/></svg>
+        </button>
+        <span class="vsep" aria-hidden="true"></span>
+        <button class="tbtn circle subtle" id="btn-hide" title="隐藏窗口（快捷键可唤回）" aria-label="隐藏窗口">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 8h8.8"/></svg>
+        </button>
+        <button class="tbtn circle" id="btn-close" title="隐藏到托盘（托盘菜单可退出）" aria-label="隐藏到托盘">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="tag-bar" id="tag-bar"></div>
+
+    <div class="editor" id="editor" contenteditable="true" spellcheck="false"
+         data-placeholder="记录点什么... （Ctrl+Shift+T 待办 · Ctrl+Shift+L 标签 · Ctrl+V 图片）"></div>
+
+    <div class="paw-deco" aria-hidden="true">
+      <svg viewBox="0 0 96 72" aria-hidden="true">
+        <g transform="translate(2 26) rotate(-12)">
+          <ellipse cx="10" cy="13" rx="8.6" ry="7.4"/>
+          <ellipse cx="4.4" cy="3.4" rx="3.6" ry="4"/>
+          <ellipse cx="12.2" cy="0.8" rx="3.6" ry="4"/>
+          <ellipse cx="19.6" cy="4.6" rx="3.4" ry="3.8"/>
+        </g>
+        <g transform="translate(22 44) rotate(-6)" opacity=".72">
+          <ellipse cx="6" cy="9" rx="5.6" ry="4.8"/>
+          <ellipse cx="2.4" cy="2.6" rx="2.4" ry="2.7"/>
+          <ellipse cx="8.2" cy="0.8" rx="2.4" ry="2.7"/>
+          <ellipse cx="13.2" cy="3.4" rx="2.2" ry="2.5"/>
+        </g>
+        <g transform="translate(34 22) rotate(8)" opacity=".5">
+          <ellipse cx="4" cy="6.4" rx="4" ry="3.4"/>
+          <ellipse cx="1.6" cy="1.8" rx="1.7" ry="1.9"/>
+          <ellipse cx="5.8" cy="0.6" rx="1.7" ry="1.9"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
+  </div>
+
+  <!-- 应用设置浮层 -->
+  <div id="settings-menu" class="menu hidden">
+    <div class="pm-title">设置</div>
+    <label class="pm-row"><span>透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
+    <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
+    <div class="pm-sep"></div>
+    <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
+    <div class="pm-row"><span>插入待办</span><span class="pm-hint">Ctrl + Shift + T</span></div>
+    <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
+    <div class="pm-row"><span>粘贴图片</span><span class="pm-hint">Ctrl + V</span></div>
+    <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标或上方快捷键</span></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
