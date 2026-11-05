@@ -8,7 +8,6 @@ contextBridge.exposeInMainWorld('api', {
   saveImage: (noteId, dataUrl) => ipcRenderer.invoke('image:save', { noteId, dataUrl }),
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
   setAlwaysOnTop: (v) => ipcRenderer.invoke('win:setAlwaysOnTop', v),
-  setOpacity: (o) => ipcRenderer.invoke('win:setOpacity', o),
   hide: () => ipcRenderer.invoke('win:hide'),
   minimize: () => ipcRenderer.invoke('win:minimize'),
   close: () => ipcRenderer.invoke('win:close'),

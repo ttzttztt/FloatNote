@@ -117,7 +117,6 @@ function createWindow() {
   });
 
   mainWindow.setAlwaysOnTop(!!settings.alwaysOnTop, 'floating');
-  mainWindow.setOpacity(Math.min(1, Math.max(0.2, settings.opacity)));
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
@@ -125,7 +124,6 @@ function createWindow() {
     mainWindow.showInactive();
   });
 
-  // 临时：整屏截图用于验证 DWM 材质（capturePage 无法捕获系统材质）
   // 关闭 = 隐藏（便签行为），除非真正退出
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
@@ -303,11 +301,6 @@ function registerIpc() {
   ipcMain.handle('win:setAlwaysOnTop', (e, v) => {
     mainWindow.setAlwaysOnTop(!!v, 'floating');
     return !!v;
-  });
-  ipcMain.handle('win:setOpacity', (e, o) => {
-    const op = Math.min(1, Math.max(0.2, Number(o)));
-    mainWindow.setOpacity(op);
-    return op;
   });
   ipcMain.handle('win:hide', () => {
     mainWindow.hide();

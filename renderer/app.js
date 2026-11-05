@@ -12,6 +12,8 @@ const el = {
   card: document.getElementById('card'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),
+  noteTitleEl: document.getElementById('note-title'),
+  switcherMenu: document.getElementById('switcher-menu'),
   editor: document.getElementById('editor'),
   tagBar: document.getElementById('tag-bar'),
   settingsMenu: document.getElementById('settings-menu'),
@@ -36,7 +38,8 @@ function uid() {
 
 function stripHtml(html) {
   const div = document.createElement('div');
-  div.innerHTML = html || '';
+  // 块级元素与换行先转成 \n，否则多行内容会被拼成一行
+  div.innerHTML = String(html || '').replace(/<(br|div|p|li)\b[^>]*>/gi, '\n$&');
   return div.textContent || '';
 }
 
@@ -47,6 +50,22 @@ function noteTitle(note) {
     return first.length > 18 ? first.slice(0, 18) + '…' : first;
   }
   return '空便笺';
+}
+
+function relativeTime(ts) {
+  const diff = Date.now() - (ts || 0);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return min + ' 分钟前';
+  const h = Math.floor(min / 60);
+  if (h < 24) return h + ' 小时前';
+  const d = new Date(ts);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+
+function applyGlass(v) {
+  const g = Math.min(1, Math.max(0.2, Number(v) || 1));
+  document.documentElement.style.setProperty('--glass', String(g));
 }
 
 function blobToDataURL(blob) {
@@ -70,6 +89,7 @@ function persist() {
     syncCheckboxAttrs();
     note.content = el.editor.innerHTML;
     note.updatedAt = Date.now();
+    el.noteTitleEl.textContent = noteTitle(note);
   }
   window.api.saveData({ notes: state.notes, settings: state.settings });
 }
@@ -146,13 +166,22 @@ function loadActiveNote() {
 
 /* ============ 渲染 ============ */
 function renderSwitcher() {
-  el.switcher.innerHTML = '';
+  const note = currentNote();
+  el.noteTitleEl.textContent = note ? noteTitle(note) : '空便笺';
+}
+
+function renderSwitcherMenu() {
+  el.switcherMenu.innerHTML = '';
   state.notes.forEach(n => {
-    const opt = document.createElement('option');
-    opt.value = n.id;
-    opt.textContent = noteTitle(n);
-    if (n.id === state.activeId) opt.selected = true;
-    el.switcher.appendChild(opt);
+    const item = document.createElement('button');
+    item.className = 'menu-item' + (n.id === state.activeId ? ' current' : '');
+    item.setAttribute('role', 'menuitem');
+    item.innerHTML = `<span class="mi-title">${escapeHtml(noteTitle(n))}</span><span class="mi-time">${relativeTime(n.updatedAt)}</span>`;
+    item.addEventListener('click', () => {
+      closeMenus();
+      switchTo(n.id);
+    });
+    el.switcherMenu.appendChild(item);
   });
 }
 
@@ -176,8 +205,8 @@ function escapeHtml(s) {
 
 function toast(msg) {
   const t = document.createElement('div');
+  t.className = 'toast';
   t.textContent = msg;
-  t.style.cssText = 'position:fixed;left:50%;bottom:56px;transform:translateX(-50%);background:rgba(60,50,20,.92);color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;z-index:99;pointer-events:none;';
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 1600);
 }
@@ -246,7 +275,18 @@ async function pasteClipboardImage() {
 
 /* ============ 事件绑定 ============ */
 el.btnNew.addEventListener('click', newNote);
-el.switcher.addEventListener('change', () => switchTo(el.switcher.value));
+el.switcher.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (el.switcherMenu.classList.contains('hidden')) {
+    closeMenus();
+    saveCurrentContent();
+    renderSwitcherMenu();
+    openMenu(el.switcherMenu, el.switcher, 'left');
+    el.switcher.setAttribute('aria-expanded', 'true');
+  } else {
+    closeMenus();
+  }
+});
 
 // 删除：两步确认（3 秒内再点一次生效）
 let deleteArm = null;
@@ -276,8 +316,7 @@ function openTagInput() {
   }
   const input = document.createElement('input');
   input.className = 'tag-input';
-  input.placeholder = '标签名 + 回车';
-  input.style.cssText = 'margin-left:6px;width:96px;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:12px;outline:none;background:rgba(255,255,255,.6);color:var(--text);';
+  input.placeholder = '标签名，回车确认';
   el.tagBar.appendChild(input);
   input.focus();
   const commit = () => {
@@ -337,15 +376,17 @@ el.btnPin.addEventListener('click', async () => {
   scheduleSave(100);
 });
 
-/* ============ 设置浮层 ============ */
-/* 弹层锚定在触发按钮下沿，并限制在便笺卡片范围内 */
-function openMenu(menu, btn) {
+/* ============ 浮层（设置 / 便笺切换） ============ */
+/* 弹层锚定在触发按钮下沿，并限制在便笺卡片范围内；align 决定与按钮左对齐还是右对齐 */
+function openMenu(menu, btn, align = 'right') {
   menu.classList.remove('hidden');
+  el.card.classList.add('menu-open');
   const b = btn.getBoundingClientRect();
   const c = el.card.getBoundingClientRect();
   const w = menu.offsetWidth;
   const h = menu.offsetHeight;
-  const left = Math.min(Math.max(b.right - w, c.left + 6), c.right - w - 6);
+  const want = align === 'left' ? b.left : b.right - w;
+  const left = Math.min(Math.max(want, c.left + 6), c.right - w - 6);
   let top = b.bottom + 6;
   if (top + h > c.bottom - 6) top = Math.max(c.top + 6, b.top - h - 6);
   menu.style.left = Math.round(left) + 'px';
@@ -353,22 +394,35 @@ function openMenu(menu, btn) {
   menu.style.right = 'auto';
 }
 
+function closeMenus() {
+  el.settingsMenu.classList.add('hidden');
+  el.switcherMenu.classList.add('hidden');
+  el.switcher.setAttribute('aria-expanded', 'false');
+  el.card.classList.remove('menu-open');
+}
+
 el.btnSettings.addEventListener('click', (e) => {
   e.stopPropagation();
-  if (el.settingsMenu.classList.contains('hidden')) openMenu(el.settingsMenu, el.btnSettings);
-  else el.settingsMenu.classList.add('hidden');
-});
-document.addEventListener('click', (e) => {
-  if (!el.settingsMenu.classList.contains('hidden') && !el.settingsMenu.contains(e.target) && e.target !== el.btnSettings) {
-    el.settingsMenu.classList.add('hidden');
+  if (el.settingsMenu.classList.contains('hidden')) {
+    closeMenus();
+    openMenu(el.settingsMenu, el.btnSettings);
+  } else {
+    closeMenus();
   }
 });
-window.addEventListener('resize', () => el.settingsMenu.classList.add('hidden'));
+document.addEventListener('click', (e) => {
+  if (el.settingsMenu.contains(e.target) || el.switcherMenu.contains(e.target)) return;
+  closeMenus();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMenus();
+});
+window.addEventListener('resize', closeMenus);
 
 el.smOpacity.addEventListener('input', () => {
   const v = parseFloat(el.smOpacity.value);
   state.settings.opacity = v;
-  window.api.setOpacity(v);
+  applyGlass(v);
 });
 el.smOpacity.addEventListener('change', () => scheduleSave(100));
 
@@ -470,6 +524,7 @@ async function init() {
 
   // 应用设置
   el.smOpacity.value = state.settings.opacity;
+  applyGlass(state.settings.opacity);
   el.smAlwaysOnTop.checked = state.settings.alwaysOnTop;
   el.btnPin.classList.toggle('active', state.settings.alwaysOnTop);
   el.smHotkeyHint.textContent = formatHotkey(await window.api.getHotkey());

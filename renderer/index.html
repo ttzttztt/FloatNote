@@ -14,15 +14,15 @@
         <button class="tbtn circle" id="btn-new" title="新建便笺" aria-label="新建便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.4v9.2M3.4 8h9.2"/></svg>
         </button>
-        <div class="pill" title="切换便笺">
+        <button class="pill" id="note-switcher" title="切换便笺" aria-haspopup="menu" aria-expanded="false">
           <svg class="pill-icon" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 2.4l5.2 2.7L8 7.8 2.8 5.1 8 2.4z"/>
             <path d="M2.8 8.1L8 10.8l5.2-2.7"/>
             <path d="M2.8 11.1L8 13.8l5.2-2.7"/>
           </svg>
-          <select id="note-switcher"></select>
+          <span class="pill-label" id="note-title">空便笺</span>
           <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
-        </div>
+        </button>
         <button class="tbtn" id="btn-delete" title="删除当前便笺" aria-label="删除当前便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
         </button>
@@ -47,7 +47,7 @@
     <div class="tag-bar" id="tag-bar"></div>
 
     <div class="editor" id="editor" contenteditable="true" spellcheck="false"
-         data-placeholder="记录点什么... （Ctrl+Shift+T 待办 · Ctrl+Shift+L 标签 · Ctrl+V 图片）"></div>
+         data-placeholder="记录点什么…"></div>
 
     <div class="paw-deco" aria-hidden="true">
       <svg viewBox="0 0 96 72" aria-hidden="true">
@@ -74,10 +74,13 @@
     <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
   </div>
 
+  <!-- 便笺切换浮层（替代原生 select，原生下拉列表无法自定义样式） -->
+  <div id="switcher-menu" class="menu list hidden" role="menu"></div>
+
   <!-- 应用设置浮层 -->
   <div id="settings-menu" class="menu hidden">
     <div class="pm-title">设置</div>
-    <label class="pm-row"><span>透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
+    <label class="pm-row"><span>背景透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
     <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
     <div class="pm-sep"></div>
     <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
