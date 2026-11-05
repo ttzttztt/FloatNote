@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | 运行时 | Electron 45 | 原生支持全局快捷键、窗口置顶、透明窗口、剪贴板与无边框拖拽，与本地 Node 工具链一致 |
 | 渲染 | 原生 HTML/CSS/JS（无框架） | 体积小、启动快，便于长期维护 |
+| 字体 | 霞鹜文楷 屏幕阅读版（随应用打包） | 楷书手写感贴合便笺气质；SIL OFL 开源可商用；按 unicode-range 分片按需加载 |
 | 存储 | JSON + 本地图片目录（userData） | 零依赖、可读、便于备份 |
 | 窗口 | `transparent` + `frame:false` | 半透明圆角便笺外观 |
 
@@ -65,6 +66,7 @@ main/preload.js    contextBridge 暴露的受限 API
 renderer/index.html 便笺结构
 renderer/styles.css 便笺外观与动效
 renderer/app.js    编辑器、标签、待办、图片、设置、拖拽/缩放
+renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
 scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
 assets/icon-*.png  应用与托盘图标
 ```

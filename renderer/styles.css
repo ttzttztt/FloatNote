@@ -11,7 +11,8 @@
   /* 卡片背景浓度（设置里的“背景透明度”），只影响底色，不影响文字 */
   --glass: 1;
   --font-size: 15px;
-  --font-ui: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+  /* 霞鹜文楷（随应用打包）；缺字时回退系统字体 */
+  --font-ui: "LXGW WenKai Screen", "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
 }
 
 /* ============ 配色主题（每张便笺单独选，挂在 body[data-theme] 上，浮层也跟着变） ============ */
