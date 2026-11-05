@@ -23,7 +23,7 @@
           <span class="pill-label" id="note-title">空便笺</span>
           <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
         </button>
-        <button class="tbtn" id="btn-delete" title="删除当前便笺" aria-label="删除当前便笺">
+        <button class="tbtn" id="btn-delete" title="删除当前便笺（可撤销）" aria-label="删除当前便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
         </button>
       </div>
@@ -48,6 +48,8 @@
 
     <div class="editor" id="editor" contenteditable="true" spellcheck="false"
          data-placeholder="记录点什么…"></div>
+
+    <div class="status-bar" id="status-bar" aria-live="off"></div>
 
     <div class="paw-deco" aria-hidden="true">
       <svg viewBox="0 0 96 72" aria-hidden="true">
@@ -80,15 +82,29 @@
   <!-- 应用设置浮层 -->
   <div id="settings-menu" class="menu hidden">
     <div class="pm-title">设置</div>
+    <div class="pm-row"><span>便笺颜色</span>
+      <span class="swatches" id="sm-swatches">
+        <button class="swatch" data-theme="glass" title="白玻璃"></button>
+        <button class="swatch" data-theme="yellow" title="暖黄便利贴"></button>
+        <button class="swatch" data-theme="mint" title="薄荷绿"></button>
+        <button class="swatch" data-theme="pink" title="樱花粉"></button>
+        <button class="swatch" data-theme="dark" title="深色"></button>
+      </span>
+    </div>
+    <div class="pm-row"><span>字号</span>
+      <span class="font-ctl"><input type="range" id="sm-font-size" min="12" max="22" step="1"><span class="font-val" id="sm-font-val"></span></span>
+    </div>
     <label class="pm-row"><span>背景透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
     <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
+    <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
     <div class="pm-sep"></div>
     <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
     <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
     <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
+    <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
     <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
     <div class="pm-row"><span>粘贴图片</span><span class="pm-hint">Ctrl + V</span></div>
-    <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标或上方快捷键</span></div>
+    <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标 / 唤起快捷键</span></div>
   </div>
 
   <script src="app.js"></script>
