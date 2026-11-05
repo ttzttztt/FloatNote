@@ -45,13 +45,17 @@
 ## 运行
 
 ```bash
-pnpm install         # 首次（会自动下载 Electron 程序）
-pnpm start           # 或 pnpm dev
+pnpm install         # 首次
+pnpm start           # 或 pnpm dev；首次启动会下载 Electron 程序（约 100MB）
 ```
 
 `scripts/start.js` 会清除 `ELECTRON_RUN_AS_NODE` 环境变量后再启动 Electron，避免终端环境把 Electron 当作纯 Node 运行。
 
-项目使用 pnpm（`package.json` 中 `packageManager` 已锁定版本，启用 Corepack 后会自动使用对应版本）。pnpm 10 默认不执行依赖的安装脚本，`pnpm.onlyBuiltDependencies` 中已放行 `electron`，否则装不上 Electron 程序。
+项目使用 pnpm（`package.json` 中 `packageManager` 已锁定版本，启用 Corepack 后会自动使用对应版本）。
+
+**Electron 下载源**：Electron 45 起不在 `install` 时下载程序，而是首次 `require('electron')`（即首次 `pnpm start`）时下载。默认源 GitHub 在国内常连不上（报 `fetch failed`），项目 `.npmrc` 已改用 npmmirror 镜像，`scripts/start.js` 启动时会读取它。想用其他源时，设置环境变量 `ELECTRON_MIRROR`（以及对应的 `ELECTRON_CUSTOM_DIR`）即可覆盖；若某次下载中断导致程序损坏，删除 `node_modules` 后重新 `pnpm install` 再启动。
+
+`pnpm start -- <参数>` 会把参数透传给 Electron（如 Linux root 环境下的 `--no-sandbox`）。
 
 ## 数据位置
 
