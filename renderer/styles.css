@@ -11,6 +11,7 @@
   /* 卡片背景浓度（设置里的“背景透明度”），只影响底色，不影响文字 */
   --glass: 1;
   --font-size: 15px;
+  --font-ui: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
 }
 
 /* ============ 配色主题（每张便笺单独选，挂在 body[data-theme] 上，浮层也跟着变） ============ */
@@ -131,7 +132,7 @@ html, body {
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+  font-family: var(--font-ui);
   color: var(--text);
   user-select: none;
 }
@@ -598,12 +599,21 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
 .menu-items { overflow-y: auto; min-height: 0; }
 .menu-empty { padding: 14px 10px; text-align: center; color: var(--muted); font-size: 12px; }
 
-.mi-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .12); }
-.mi-dot[data-theme="glass"]  { background: #ffffff; border-color: rgba(0, 0, 0, .28); }
-.mi-dot[data-theme="yellow"] { background: #ffd94d; }
-.mi-dot[data-theme="mint"]   { background: #5fd3a0; }
-.mi-dot[data-theme="pink"]   { background: #f48fb1; }
-.mi-dot[data-theme="dark"]   { background: #3a3b45; }
+/* 颜色标记：实心圆点 + 极淡描边，白玻璃用灰蓝色，避免看起来像空心单选框 */
+.mi-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), 0 0 0 2px rgba(255, 255, 255, .5);
+}
+.mi-dot[data-theme="glass"]  { background: linear-gradient(135deg, #d9e2f7, #a9b8dd); }
+.mi-dot[data-theme="yellow"] { background: linear-gradient(135deg, #ffd96a, #f2b833); }
+.mi-dot[data-theme="mint"]   { background: linear-gradient(135deg, #7ddcb5, #35b583); }
+.mi-dot[data-theme="pink"]   { background: linear-gradient(135deg, #f9a8c3, #e8709a); }
+.mi-dot[data-theme="dark"]   { background: linear-gradient(135deg, #5a5b68, #2e2f38); }
+body[data-theme="dark"] .mi-dot { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+body[data-theme="dark"] .mi-dot[data-theme="dark"] { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .45); }
 
 .mi-btn {
   flex: 0 0 auto;
