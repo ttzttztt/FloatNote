@@ -11,5 +11,11 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^45.2.2"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   }
 }

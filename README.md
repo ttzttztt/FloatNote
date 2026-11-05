@@ -45,18 +45,28 @@
 ## 运行
 
 ```bash
-npm install          # 首次
-npm start            # 或 npm run dev
+pnpm install         # 首次（会自动下载 Electron 程序）
+pnpm start           # 或 pnpm dev
 ```
 
 `scripts/start.js` 会清除 `ELECTRON_RUN_AS_NODE` 环境变量后再启动 Electron，避免终端环境把 Electron 当作纯 Node 运行。
 
+项目使用 pnpm（`package.json` 中 `packageManager` 已锁定版本，启用 Corepack 后会自动使用对应版本）。pnpm 10 默认不执行依赖的安装脚本，`pnpm.onlyBuiltDependencies` 中已放行 `electron`，否则装不上 Electron 程序。
+
 ## 数据位置
 
-`%APPDATA%/FloatNote/`
+便笺内容只保存在本机的系统用户数据目录（Electron `app.getPath('userData')`），**不在项目目录里，也不会被提交到 Git / GitHub**：
+
+| 系统 | 路径 |
+| --- | --- |
+| Windows | `%APPDATA%\floatnote\`（通常为 `C:\Users\<用户名>\AppData\Roaming\floatnote\`） |
+| macOS | `~/Library/Application Support/floatnote/` |
+| Linux | `~/.config/floatnote/` |
 
 - `data.json`：便笺与设置
 - `images/<noteId>/*.png`：粘贴的图片
+
+需要备份或迁移时，复制整个目录即可；删除该目录即清空所有便笺。
 
 ## 文件结构
 
