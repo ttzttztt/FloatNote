@@ -43,13 +43,61 @@ function stripHtml(html) {
   return div.textContent || '';
 }
 
+function clip(s, n) {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function noteLines(note) {
+  return stripHtml(note.content).split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+/* 自动标题：正文第一行，无内容时为“空便笺” */
+function autoTitle(note) {
+  const first = noteLines(note)[0];
+  return first ? clip(first, 18) : '空便笺';
+}
+
+/* 显示标题：用户重命名过的优先，否则用自动标题 */
 function noteTitle(note) {
-  const t = stripHtml(note.content).trim();
-  if (t) {
-    const first = t.split('\n').map(s => s.trim()).filter(Boolean)[0];
-    return first.length > 18 ? first.slice(0, 18) + '…' : first;
+  const custom = (note.title || '').trim();
+  return custom ? clip(custom, 24) : autoTitle(note);
+}
+
+/* 没有标题、标签、文字和图片的便笺视为空便笺 */
+function isNoteEmpty(note) {
+  if (!note) return false;
+  if ((note.title || '').trim() || (note.tags && note.tags.length)) return false;
+  const html = String(note.content || '');
+  if (/<img\b/i.test(html)) return false;
+  return !stripHtml(html).replace(/\u00a0/g, ' ').trim();
+}
+
+/* 移除空便笺（保留 keepId 对应的那张，且至少留一张） */
+function pruneEmptyNotes(keepId) {
+  const kept = state.notes.filter(n => n.id === keepId || !isNoteEmpty(n));
+  if (kept.length && kept.length !== state.notes.length) {
+    state.notes = kept;
+    return true;
   }
-  return '空便笺';
+  return false;
+}
+
+/* 菜单副标题：正文预览 · 待办进度 · 首个标签 */
+function noteSubtitle(note) {
+  const parts = [];
+  const lines = noteLines(note);
+  const preview = (note.title || '').trim() ? lines[0] : lines[1];
+  if (preview) parts.push(clip(preview, 22));
+  const div = document.createElement('div');
+  div.innerHTML = note.content || '';
+  const boxes = div.querySelectorAll('input[type="checkbox"]');
+  if (boxes.length) {
+    const done = [...boxes].filter(b => b.hasAttribute('checked')).length;
+    parts.push(`待办 ${done}/${boxes.length}`);
+  }
+  if (div.querySelector('img')) parts.push('图片');
+  if (note.tags && note.tags.length) parts.push('#' + note.tags[0] + (note.tags.length > 1 ? ` +${note.tags.length - 1}` : ''));
+  return parts.join(' · ');
 }
 
 function relativeTime(ts) {
@@ -96,6 +144,14 @@ function persist() {
 
 /* ============ 便签 CRUD ============ */
 function newNote() {
+  saveCurrentContent();
+  // 当前便笺还是空的就直接复用，避免攒出一串“空便笺”
+  if (isNoteEmpty(currentNote())) {
+    closeMenus();
+    el.editor.focus();
+    toast('当前便笺还是空的，直接写吧');
+    return;
+  }
   const note = {
     id: uid(),
     title: '',
@@ -136,6 +192,7 @@ function switchTo(id) {
   saveCurrentContent();
   state.activeId = id;
   state.settings.activeNoteId = id;
+  pruneEmptyNotes(id); // 离开时顺手清掉空便笺
   loadActiveNote();
   scheduleSave(100);
 }
@@ -168,21 +225,75 @@ function loadActiveNote() {
 function renderSwitcher() {
   const note = currentNote();
   el.noteTitleEl.textContent = note ? noteTitle(note) : '空便笺';
+  el.noteTitleEl.classList.toggle('custom', !!(note && (note.title || '').trim()));
 }
+
+const PENCIL_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.1l2.3 2.3-7.1 7.1-2.9.6.6-2.9 7.1-7.1z"/><path d="M9.3 4.4l2.3 2.3"/></svg>';
 
 function renderSwitcherMenu() {
   el.switcherMenu.innerHTML = '';
   state.notes.forEach(n => {
-    const item = document.createElement('button');
+    const item = document.createElement('div');
     item.className = 'menu-item' + (n.id === state.activeId ? ' current' : '');
     item.setAttribute('role', 'menuitem');
-    item.innerHTML = `<span class="mi-title">${escapeHtml(noteTitle(n))}</span><span class="mi-time">${relativeTime(n.updatedAt)}</span>`;
-    item.addEventListener('click', () => {
+    item.tabIndex = 0;
+    const sub = noteSubtitle(n);
+    item.innerHTML =
+      `<span class="mi-main"><span class="mi-title">${escapeHtml(noteTitle(n))}</span>` +
+      (sub ? `<span class="mi-sub">${escapeHtml(sub)}</span>` : '') + `</span>` +
+      `<span class="mi-time">${relativeTime(n.updatedAt)}</span>` +
+      `<button class="mi-rename" title="重命名" aria-label="重命名">${PENCIL_SVG}</button>`;
+    const go = () => { closeMenus(); switchTo(n.id); };
+    item.addEventListener('click', go);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); go(); }
+    });
+    item.querySelector('.mi-rename').addEventListener('click', (e) => {
+      e.stopPropagation();
       closeMenus();
       switchTo(n.id);
+      startRename();
     });
     el.switcherMenu.appendChild(item);
   });
+}
+
+/* ============ 重命名 ============ */
+/* 用与胶囊同尺寸的输入框临时替换切换按钮：回车保存、Esc 取消、留空恢复自动标题 */
+function startRename() {
+  const note = currentNote();
+  if (!note || document.querySelector('.pill-input')) return;
+  closeMenus();
+  saveCurrentContent();
+  const input = document.createElement('input');
+  input.className = 'pill-input';
+  input.maxLength = 40;
+  input.value = (note.title || '').trim();
+  input.placeholder = autoTitle(note) === '空便笺' ? '输入便笺标题' : autoTitle(note);
+  input.title = '回车保存 · Esc 取消 · 留空则用第一行文字';
+  el.switcher.classList.add('renaming');
+  el.switcher.after(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    if (save) {
+      note.title = input.value.trim();
+      scheduleSave(100);
+    }
+    input.remove();
+    el.switcher.classList.remove('renaming');
+    renderSwitcher();
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); el.editor.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); el.editor.focus(); }
+  });
+  input.addEventListener('blur', () => finish(true));
 }
 
 function renderTags() {
@@ -277,6 +388,7 @@ async function pasteClipboardImage() {
 el.btnNew.addEventListener('click', newNote);
 el.switcher.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (e.detail > 1) return; // 双击的第二下交给 dblclick（重命名）
   if (el.switcherMenu.classList.contains('hidden')) {
     closeMenus();
     saveCurrentContent();
@@ -286,6 +398,13 @@ el.switcher.addEventListener('click', (e) => {
   } else {
     closeMenus();
   }
+});
+
+// 双击标题重命名
+el.switcher.addEventListener('dblclick', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  startRename();
 });
 
 // 删除：两步确认（3 秒内再点一次生效）
@@ -416,6 +535,7 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenus();
+  else if (e.key === 'F2') { e.preventDefault(); startRename(); }
 });
 window.addEventListener('resize', closeMenus);
 
@@ -521,6 +641,8 @@ async function init() {
   state.activeId = state.settings.activeNoteId && state.notes.find(n => n.id === state.settings.activeNoteId)
     ? state.settings.activeNoteId
     : state.notes[0].id;
+  // 启动时清掉历史遗留的空便笺
+  if (pruneEmptyNotes(state.activeId)) state.settings.activeNoteId = state.activeId;
 
   // 应用设置
   el.smOpacity.value = state.settings.opacity;

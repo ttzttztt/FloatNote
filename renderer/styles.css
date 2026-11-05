@@ -160,6 +160,27 @@ html, body {
 }
 .pill-caret { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: #8b8b95; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s; }
 .pill[aria-expanded="true"] .pill-caret { transform: rotate(180deg); }
+.pill.renaming { display: none; }
+
+/* 重命名输入框：与胶囊同尺寸，原地替换 */
+.pill-input {
+  height: 30px;
+  width: 190px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .95);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  outline: none;
+  user-select: text;
+  animation: pop-in .14s ease-out;
+}
+.pill-input::placeholder { color: #a0a0aa; font-weight: 400; }
+@keyframes pop-in { from { opacity: 0; transform: scale(.96); } }
 
 /* 卡片未被悬停 / 聚焦时，工具栏与缩放手柄淡出，只留内容 */
 .card:not(:hover):not(:focus-within):not(.menu-open) .toolbar {
@@ -229,15 +250,33 @@ html, body {
   margin: 6px 0;
   display: block;
 }
-.editor .todo { display: flex; align-items: flex-start; gap: 6px; margin: 2px 0; }
+.editor .todo { display: flex; align-items: flex-start; gap: 5px; margin: 3px 0; }
+/* 自绘复选框：圆角方块 + 主题色勾选，替代系统默认灰框 */
 .editor .todo input[type="checkbox"] {
-  margin-top: 4px;
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
-  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  font-size: inherit;
+  width: 16px;
+  height: 16px;
+  margin: calc(.825em - 8px) 0 0; /* 与首行文字垂直居中（行高 1.65） */
   flex-shrink: 0;
+  border: 1.5px solid rgba(20, 20, 30, .26);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .75) center / 10px 10px no-repeat;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
 }
+.editor .todo input[type="checkbox"]:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.editor .todo input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 5.2l2 2 4-4.4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  animation: check-pop .18s ease-out;
+}
+@keyframes check-pop { 40% { transform: scale(.82); } }
 /* 左下角爪印装饰（参考图里的轻量点缀） */
 .paw-deco {
   position: absolute;
@@ -257,7 +296,9 @@ html, body {
 
 .editor .todo:has(> input:checked) {
   text-decoration: line-through;
+  text-decoration-color: rgba(118, 118, 127, .6);
   color: var(--muted);
+  transition: color .2s;
 }
 
 /* ============ 调整大小手柄 ============ */
@@ -322,13 +363,14 @@ html, body {
 }
 
 /* ============ 便笺切换菜单 ============ */
-.menu.list { padding: 6px; min-width: 200px; max-width: 260px; max-height: 220px; overflow-y: auto; }
+.menu.list { padding: 6px; min-width: 220px; max-width: 280px; max-height: 240px; overflow-y: auto; }
 .menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 6px 6px 10px;
+  outline: none;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -338,11 +380,34 @@ html, body {
   text-align: left;
   cursor: pointer;
 }
-.menu-item:hover { background: var(--hover); }
-.menu-item .mi-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--hover); }
+.menu-item .mi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.menu-item .mi-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item .mi-sub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-item .mi-time { flex: 0 0 auto; font-size: 11px; color: var(--muted); }
 .menu-item.current { background: var(--accent-soft); color: #2f57c9; }
-.menu-item.current .mi-time { color: #5a7bd6; }
+.menu-item.current .mi-time, .menu-item.current .mi-sub { color: #5a7bd6; }
+
+/* 每行右侧的重命名按钮，悬停时出现 */
+.mi-rename {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-left: -2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.menu-item:hover .mi-rename, .menu-item:focus-within .mi-rename { opacity: 1; }
+.mi-rename:hover { background: rgba(255, 255, 255, .9); color: var(--accent); }
+.mi-rename svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ============ 轻提示 ============ */
 .toast {
