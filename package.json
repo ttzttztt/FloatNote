@@ -5,12 +5,14 @@
   "main": "main/main.js",
   "scripts": {
     "start": "node scripts/start.js",
-    "dev": "node scripts/start.js"
+    "dev": "node scripts/start.js",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\""
   },
   "author": "tian",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.2.2"
+    "electron": "^45.2.2",
+    "playwright-core": "1.65.0"
   },
   "packageManager": "pnpm@10.28.0"
 }

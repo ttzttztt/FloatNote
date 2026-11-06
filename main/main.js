@@ -20,6 +20,8 @@ let isQuitting = false;
 let hideHintShown = false; // 是否已提示过“隐藏后如何唤回”
 
 /* ============ 数据：主进程持有唯一一份，渲染进程只发增量 ============ */
+// 自动化测试用独立的临时目录，不碰真实便笺（Windows / macOS / Linux 通用）
+if (process.env.FLOATNOTE_USER_DATA) app.setPath('userData', process.env.FLOATNOTE_USER_DATA);
 const userDataDir = app.getPath('userData');
 const dataFile = path.join(userDataDir, 'data.json');
 const imagesDir = path.join(userDataDir, 'images');
@@ -963,7 +965,7 @@ if (!gotLock) {
     createTray();
     dailyBackup();
     setInterval(dailyBackup, 3 * 3600 * 1000); // 跨天不关机也会备份
-    setTimeout(cleanupImages, 15000);
+    setTimeout(cleanupImages, Number(process.env.FLOATNOTE_CLEANUP_DELAY) || 15000);
     if (recoveredFrom) notify('数据文件损坏，已自动恢复', `已从 ${recoveredFrom} 的备份恢复。损坏的文件已改名保留在数据文件夹中。`);
   });
 
