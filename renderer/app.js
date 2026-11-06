@@ -4,12 +4,29 @@
 const state = {
   notes: [],
   settings: null,
-  activeId: null
+  activeId: null,
+  stuck: new Set() // 已贴到桌面的便笺
 };
+
+/* 窗口模式：main = 便笺本（可切换多张）；sticky = 贴在桌面上的单张便笺 */
+const params = new URLSearchParams(location.search);
+const MODE = params.get('mode') === 'sticky' ? 'sticky' : 'main';
+const STICKY_ID = params.get('note');
+const IS_STICKY = MODE === 'sticky';
+document.body.classList.add('mode-' + MODE);
 
 /* ============ DOM 引用 ============ */
 const el = {
   card: document.getElementById('card'),
+  cardWrap: document.getElementById('card-wrap'),
+  btnStick: document.getElementById('btn-stick'),
+  dockTab: document.getElementById('dock-tab'),
+  dockTitle: document.getElementById('dock-title'),
+  smPaper: document.getElementById('sm-paper'),
+  smAppearance: document.getElementById('sm-appearance'),
+  smDock: document.getElementById('sm-dock'),
+  smCat: document.getElementById('sm-cat'),
+  smCaptureHint: document.getElementById('sm-capture-hint'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),
   noteTitleEl: document.getElementById('note-title'),
@@ -34,7 +51,9 @@ const el = {
   statusBar: document.getElementById('status-bar')
 };
 
-const THEMES = ['glass', 'yellow', 'mint', 'pink', 'dark'];
+const THEMES = ['glass', 'yellow', 'mint', 'pink', 'kraft', 'dark'];
+const PAPERS = ['plain', 'lines', 'grid', 'dots', 'fold'];
+const { Cat } = window.Life;
 
 const currentNote = () => state.notes.find(n => n.id === state.activeId) || null;
 
@@ -81,7 +100,7 @@ function isNoteEmpty(note) {
 
 /* 移除空便笺（保留 keepId 对应的那张，且至少留一张） */
 function pruneEmptyNotes(keepId) {
-  const kept = state.notes.filter(n => n.id === keepId || !isNoteEmpty(n));
+  const kept = state.notes.filter(n => n.id === keepId || state.stuck.has(n.id) || !isNoteEmpty(n));
   if (kept.length && kept.length !== state.notes.length) {
     state.notes = kept;
     return true;
@@ -131,7 +150,58 @@ function blobToDataURL(blob) {
   });
 }
 
-/* ============ 持久化 ============ */
+/* ============ 持久化：只把变化的字段发给主进程 ============
+   多个窗口（便笺本 + 贴在桌面的便笺）共享同一份数据。每个窗口记住“上次同步时的样子”，
+   保存时按字段比较，只发送改动；收到其他窗口的改动后合并进来。这样两个窗口不会互相覆盖。 */
+const LOCAL_SETTINGS = new Set(['bounds', 'stickies', 'dock']); // 主进程维护的设置项
+let baseline = { notes: new Map(), order: '', settings: {} };
+
+function snapshot(obj, skip) {
+  const o = {};
+  for (const k of Object.keys(obj || {})) {
+    if (skip && skip.has(k)) continue;
+    if (obj[k] === undefined) continue;
+    o[k] = JSON.stringify(obj[k]);
+  }
+  return o;
+}
+
+function rememberBaseline() {
+  baseline = {
+    notes: new Map(state.notes.map(n => [n.id, snapshot(n)])),
+    order: state.notes.map(n => n.id).join(','),
+    settings: snapshot(state.settings, LOCAL_SETTINGS)
+  };
+}
+
+function diffFields(cur, prev, source) {
+  const set = {};
+  const unset = [];
+  for (const k of Object.keys(cur)) if (cur[k] !== prev[k]) set[k] = source[k];
+  for (const k of Object.keys(prev)) if (!(k in cur)) unset.push(k);
+  return (Object.keys(set).length || unset.length) ? { set, unset } : null;
+}
+
+function buildPatch() {
+  const upserts = [];
+  const seen = new Set();
+  for (const n of state.notes) {
+    seen.add(n.id);
+    const d = diffFields(snapshot(n), baseline.notes.get(n.id) || {}, n);
+    if (d) upserts.push(Object.assign({ id: n.id }, d));
+  }
+  const deletes = [...baseline.notes.keys()].filter(id => !seen.has(id));
+  const order = state.notes.map(n => n.id).join(',');
+  const settings = diffFields(snapshot(state.settings, LOCAL_SETTINGS), baseline.settings, state.settings);
+  if (!upserts.length && !deletes.length && order === baseline.order && !settings) return null;
+  return {
+    upserts,
+    deletes,
+    order: order !== baseline.order ? state.notes.map(n => n.id) : null,
+    settings
+  };
+}
+
 let saveTimer = null;
 function scheduleSave(delay = 500) {
   clearTimeout(saveTimer);
@@ -139,13 +209,73 @@ function scheduleSave(delay = 500) {
 }
 
 function persist() {
+  clearTimeout(saveTimer);
   const note = currentNote();
   if (note) {
     saveCurrentContent();
     el.noteTitleEl.textContent = noteTitle(note);
+    el.dockTitle.textContent = noteTitle(note);
     updateStatus();
   }
-  window.api.saveData({ notes: state.notes, settings: state.settings });
+  const patch = buildPatch();
+  if (!patch) return;
+  rememberBaseline();
+  window.api.patchData(patch);
+}
+
+/* 合并其他窗口发来的改动 */
+function applyRemotePatch(p) {
+  persist(); // 先把本窗口未发出的改动发出去，再合并
+  const active = currentNote();
+  let activeChanged = false;
+  let activeContentChanged = false;
+
+  for (const u of p.upserts || []) {
+    let n = state.notes.find(x => x.id === u.id);
+    if (!n) { n = { id: u.id }; state.notes.push(n); }
+    Object.assign(n, u.set || {});
+    (u.unset || []).forEach(k => { delete n[k]; });
+    if (active && n.id === active.id) {
+      activeChanged = true;
+      if (u.set && 'content' in u.set) activeContentChanged = true;
+    }
+  }
+  if (p.deletes && p.deletes.length) {
+    const del = new Set(p.deletes);
+    state.notes = state.notes.filter(n => !del.has(n.id));
+  }
+  if (Array.isArray(p.order)) {
+    const rank = new Map(p.order.map((id, i) => [id, i]));
+    state.notes.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9) - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+  }
+  if (p.settings) {
+    Object.assign(state.settings, p.settings.set || {});
+    (p.settings.unset || []).forEach(k => { delete state.settings[k]; });
+    applySettings();
+  }
+  rememberBaseline();
+
+  if (!currentNote()) {
+    // 当前便笺在别处被删除了
+    if (IS_STICKY) return;
+    if (!state.notes.length) state.notes.push(blankNote());
+    state.activeId = (state.notes.find(n => !state.stuck.has(n.id)) || state.notes[0]).id;
+    state.settings.activeNoteId = state.activeId;
+    loadActiveNote();
+    scheduleSave(100);
+  } else if (activeContentChanged) {
+    loadActiveNote(false);
+  } else if (activeChanged) {
+    applyTheme(currentNote());
+    renderTags();
+    renderSwitcher();
+    updateStatus();
+  }
+  if (!el.switcherMenu.classList.contains('hidden')) renderMenuItems();
+}
+
+function blankNote() {
+  return { id: uid(), title: '', tags: [], content: '', createdAt: Date.now(), updatedAt: Date.now() };
 }
 
 /* ============ 便签 CRUD ============ */
@@ -158,14 +288,7 @@ function newNote() {
     toast('当前便笺还是空的，直接写吧');
     return;
   }
-  const note = {
-    id: uid(),
-    title: '',
-    tags: [],
-    content: '',
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
+  const note = blankNote();
   state.notes.unshift(note);
   state.activeId = note.id;
   renderSwitcher();
@@ -181,16 +304,20 @@ function deleteNote() {
   if (!note) return;
   const wasEmpty = isNoteEmpty(note);
 
-  if (state.notes.length <= 1) {
-    // 只有一张时清空而非删除
-    const snapshot = { title: note.title, tags: [...(note.tags || [])], content: note.content, color: note.color, updatedAt: note.updatedAt };
+  if (!wasEmpty) window.Life.tearOff(el.card); // 像便利贴一样被撕下来
+
+  // 只剩一张（贴在桌面上的不算）时清空而非删除
+  const rest = state.notes.filter(n => n !== note && !state.stuck.has(n.id));
+  if (!rest.length) {
+    const snapshot = { title: note.title, tags: [...(note.tags || [])], content: note.content, color: note.color, paper: note.paper, updatedAt: note.updatedAt };
     Object.assign(note, { title: '', tags: [], content: '' });
     loadActiveNote();
     scheduleSave(100);
     if (!wasEmpty) {
       toastAction('已清空', '撤销', () => {
         Object.assign(note, snapshot);
-        loadActiveNote();
+        loadActiveNote(false);
+        window.Life.stickIn(el.card);
         scheduleSave(100);
       });
     }
@@ -199,7 +326,8 @@ function deleteNote() {
 
   const idx = state.notes.indexOf(note);
   state.notes.splice(idx, 1);
-  state.activeId = state.notes[Math.max(0, idx - 1)].id;
+  const next = state.notes.slice(0, idx).reverse().find(n => !state.stuck.has(n.id)) || rest[0];
+  state.activeId = next.id;
   state.settings.activeNoteId = state.activeId;
   loadActiveNote();
   scheduleSave(100);
@@ -209,14 +337,52 @@ function deleteNote() {
       state.notes.splice(Math.min(idx, state.notes.length), 0, note);
       state.activeId = note.id;
       state.settings.activeNoteId = note.id;
-      loadActiveNote();
+      loadActiveNote(false);
+      window.Life.stickIn(el.card); // 贴回来
       scheduleSave(100);
     });
   }
 }
 
+/* ============ 贴到桌面 ============ */
+/* 把便笺变成桌面上独立的小窗口；便笺本随即换到另一张 */
+async function stickNote(id, x, y) {
+  persist();
+  const note = state.notes.find(n => n.id === id);
+  if (!note) return;
+  if (isNoteEmpty(note)) { toast('先写点什么再贴到桌面吧'); return; }
+  const ok = await window.api.openSticky(id, x, y);
+  if (!ok) return;
+  state.stuck.add(id);
+  if (id === state.activeId) {
+    window.Life.tearOff(el.card);
+    const other = displayOrder().find(n => !state.stuck.has(n.id));
+    if (other) {
+      state.activeId = other.id;
+    } else {
+      const fresh = blankNote();
+      state.notes.unshift(fresh);
+      state.activeId = fresh.id;
+    }
+    state.settings.activeNoteId = state.activeId;
+    loadActiveNote();
+    scheduleSave(100);
+  }
+  if (!el.switcherMenu.classList.contains('hidden')) renderMenuItems();
+}
+
+function onStickiesChanged(ids) {
+  const next = new Set(ids);
+  const returned = [...state.stuck].filter(id => !next.has(id) && state.notes.some(n => n.id === id));
+  state.stuck = next;
+  // 从桌面“放回便笺本”的那张，直接在便笺本里打开
+  if (!IS_STICKY && returned.length) switchTo(returned[returned.length - 1]);
+  if (!el.switcherMenu.classList.contains('hidden')) renderMenuItems();
+}
+
 function switchTo(id) {
   if (id === state.activeId) return;
+  if (state.stuck.has(id)) { window.api.focusSticky(id); return; } // 已贴在桌面上：把那张叫到前面
   saveCurrentContent();
   state.activeId = id;
   state.settings.activeNoteId = id;
@@ -248,7 +414,7 @@ function syncCheckboxAttrs() {
   });
 }
 
-function loadActiveNote() {
+function loadActiveNote(animate = true) {
   const note = currentNote();
   el.editor.innerHTML = note ? (note.content || '') : '';
   if (note) {
@@ -260,7 +426,7 @@ function loadActiveNote() {
   renderTags();
   renderSwitcher();
   updateStatus();
-  playEnter();
+  if (animate) playEnter();
 }
 
 /* 新建 / 切换时内容轻微淡入 */
@@ -272,11 +438,48 @@ function playEnter() {
   });
 }
 
-/* ============ 主题 / 字号 / 工具栏隐藏 ============ */
+/* ============ 主题 / 纸张 / 外观跟随 / 字号 / 工具栏隐藏 ============ */
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+/* 外观跟随：system = 系统深色时便笺变暗；time = 早上偏暖、深夜变暗 */
+function ambient() {
+  const mode = state.settings && state.settings.appearance;
+  const h = new Date().getHours();
+  if (mode === 'system') return { dark: darkQuery.matches, warm: false };
+  if (mode === 'time') return { dark: h >= 22 || h < 6, warm: h >= 6 && h < 10 };
+  return { dark: false, warm: false };
+}
+
 function applyTheme(note) {
-  const theme = note && THEMES.includes(note.color) ? note.color : 'glass';
-  document.body.dataset.theme = theme;
-  el.smSwatches.querySelectorAll('.swatch').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+  const own = note && THEMES.includes(note.color) ? note.color : 'glass';
+  const amb = ambient();
+  document.body.dataset.theme = amb.dark ? 'dark' : own;
+  document.body.classList.toggle('warm', amb.warm && !amb.dark);
+  el.smSwatches.querySelectorAll('.swatch').forEach(b => b.classList.toggle('active', b.dataset.theme === own));
+  const paper = note && PAPERS.includes(note.paper) ? note.paper : 'plain';
+  document.body.dataset.paper = paper;
+  el.smPaper.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.paper === paper));
+}
+darkQuery.addEventListener('change', () => applyTheme(currentNote()));
+setInterval(() => applyTheme(currentNote()), 60000); // 跟随时间：每分钟检查一次
+
+/* 应用全局设置（启动时，以及其他窗口改了设置之后） */
+function applySettings() {
+  const s = state.settings;
+  s.fontSize = applyFontSize(s.fontSize);
+  applyAutohide(s.autoHideToolbar !== false);
+  el.smOpacity.value = s.opacity;
+  applyGlass(s.opacity);
+  if (!IS_STICKY) {
+    el.smAlwaysOnTop.checked = !!s.alwaysOnTop;
+    el.btnPin.classList.toggle('active', !!s.alwaysOnTop);
+  }
+  el.smDock.checked = s.dockEnabled !== false;
+  el.smCat.checked = s.showCat !== false;
+  Cat.setEnabled(s.showCat !== false);
+  el.smAppearance.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === (s.appearance || 'manual')));
+  applyTheme(currentNote());
+  updateStatus();
 }
 
 function applyFontSize(v) {
@@ -301,7 +504,24 @@ function updateStatus() {
     return;
   }
   const rel = relativeTime(note.updatedAt);
-  el.statusBar.textContent = `${chars} 字 · ` + (rel === '刚刚' ? '刚刚编辑' : '编辑于 ' + rel);
+  const done = todayDone();
+  el.statusBar.textContent = (done && !IS_STICKY ? `今日完成 ${done} 件 · ` : '') +
+    `${chars} 字 · ` + (rel === '刚刚' ? '刚刚编辑' : '编辑于 ' + rel);
+}
+
+/* ============ 今日完成数 ============ */
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+function todayDone() {
+  const st = state.settings && state.settings.stats;
+  return st && st.date === todayKey() ? st.done : 0;
+}
+function countDone(delta) {
+  const st = state.settings.stats && state.settings.stats.date === todayKey()
+    ? state.settings.stats : { date: todayKey(), done: 0 };
+  state.settings.stats = { date: st.date, done: Math.max(0, st.done + delta) };
 }
 setInterval(updateStatus, 30000);
 
@@ -309,10 +529,13 @@ setInterval(updateStatus, 30000);
 function renderSwitcher() {
   const note = currentNote();
   el.noteTitleEl.textContent = note ? noteTitle(note) : '空便笺';
+  el.dockTitle.textContent = note ? noteTitle(note) : '';
   el.noteTitleEl.classList.toggle('custom', !!(note && (note.title || '').trim()));
 }
 
 const PENCIL_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.1l2.3 2.3-7.1 7.1-2.9.6.6-2.9 7.1-7.1z"/><path d="M9.3 4.4l2.3 2.3"/></svg>';
+
+const STICK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.2h7.4l2.6 2.6v7H3z"/><path d="M10.4 3.2v2.6H13"/><path d="M6 9.4l2-2 2 2M8 7.4v4"/></svg>';
 
 const PIN_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 2.4h3.8l-.5 3 2 2H4.6l2-2-.5-3z"/><path d="M8 7.4v6.2"/></svg>';
 
@@ -361,7 +584,8 @@ function renderMenuItems() {
   }
   list.forEach(n => {
     const item = document.createElement('div');
-    item.className = 'menu-item' + (n.id === state.activeId ? ' current' : '');
+    const stuck = state.stuck.has(n.id);
+    item.className = 'menu-item' + (n.id === state.activeId ? ' current' : '') + (stuck ? ' stuck' : '');
     item.setAttribute('role', 'menuitem');
     item.tabIndex = 0;
     item.draggable = !q; // 搜索结果是子集，此时不支持排序
@@ -370,7 +594,8 @@ function renderMenuItems() {
       `<span class="mi-dot" data-theme="${THEMES.includes(n.color) ? n.color : 'glass'}"></span>` +
       `<span class="mi-main"><span class="mi-title">${escapeHtml(noteTitle(n))}</span>` +
       (sub ? `<span class="mi-sub">${escapeHtml(sub)}</span>` : '') + `</span>` +
-      `<span class="mi-time">${relativeTime(n.updatedAt)}</span>` +
+      (stuck ? `<span class="mi-badge" title="已贴在桌面上，点击把它叫到前面">桌面</span>` : `<span class="mi-time">${relativeTime(n.updatedAt)}</span>`) +
+      (stuck ? '' : `<button class="mi-btn mi-stick" title="贴到桌面" aria-label="贴到桌面">${STICK_SVG}</button>`) +
       `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? '取消置顶' : '置顶此便笺'}" aria-label="置顶">${PIN_SVG}</button>` +
       `<button class="mi-btn mi-rename" title="重命名" aria-label="重命名">${PENCIL_SVG}</button>`;
 
@@ -392,9 +617,18 @@ function renderMenuItems() {
     item.querySelector('.mi-rename').addEventListener('click', (e) => {
       e.stopPropagation();
       closeMenus();
+      if (stuck) { window.api.focusSticky(n.id); return; }
       switchTo(n.id);
       startRename();
     });
+    const stickBtn = item.querySelector('.mi-stick');
+    if (stickBtn) {
+      stickBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMenus();
+        stickNote(n.id);
+      });
+    }
 
     // 拖动排序（HTML5 DnD；用自定义类型，避免拖进编辑器时被当成文字插入）
     item.addEventListener('dragstart', (e) => {
@@ -418,9 +652,17 @@ function renderMenuItems() {
       item.classList.remove('drop-before', 'drop-after');
       if (dragId) moveNote(dragId, n.id, before);
     });
-    item.addEventListener('dragend', () => {
+    item.addEventListener('dragend', (e) => {
       dragId = null;
       item.classList.remove('dragging');
+      // 拖出便笺卡片外松手：撕下来贴到桌面（在列表内松手则是排序）
+      const r = el.card.getBoundingClientRect();
+      const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      if (outside && e.dataTransfer.dropEffect === 'none' && !stuck) {
+        closeMenus();
+        const hasPoint = e.screenX || e.screenY;
+        stickNote(n.id, hasPoint ? e.screenX : undefined, hasPoint ? e.screenY : undefined);
+      }
     });
     menuList.appendChild(item);
   });
@@ -824,6 +1066,7 @@ el.btnNew.addEventListener('click', newNote);
 el.switcher.addEventListener('click', (e) => {
   e.stopPropagation();
   if (e.detail > 1) return; // 双击的第二下交给 dblclick（重命名）
+  if (IS_STICKY) return; // 桌面便笺只有一张，没有切换菜单
   if (el.switcherMenu.classList.contains('hidden')) {
     closeMenus();
     saveCurrentContent();
@@ -899,21 +1142,58 @@ el.editor.addEventListener('paste', async (e) => {
   }
 });
 
-// 待办勾选后保存
+// 待办勾选：迸出小爪印；整张便笺的待办全部完成时，小猫庆祝、爪印走过卡片
 el.editor.addEventListener('change', (e) => {
-  if (e.target && e.target.matches('input[type=checkbox]')) scheduleSave(100);
+  const cb = e.target;
+  if (!cb || !cb.matches('input[type=checkbox]')) return;
+  if (cb.checked) {
+    countDone(1);
+    const r = cb.getBoundingClientRect();
+    window.Life.burst(r.left + r.width / 2, r.top + r.height / 2);
+    const boxes = [...el.editor.querySelectorAll('input[type="checkbox"]')];
+    if (boxes.length >= 2 && boxes.every(b => b.checked)) {
+      Cat.celebrate();
+      window.Life.pawTrail(el.card);
+      toast('全部完成！小猫给你点个赞');
+    } else {
+      Cat.happy();
+    }
+  } else {
+    countDone(-1);
+  }
+  updateStatus();
+  scheduleSave(100);
 });
-el.editor.addEventListener('input', () => scheduleSave());
+el.editor.addEventListener('input', () => {
+  Cat.typing();
+  scheduleSave();
+});
 
 /* ============ 窗口控制 ============ */
 el.btnHide.addEventListener('click', () => window.api.hide());
-/* 关闭按钮同样隐藏到托盘：便笺类应用不应让用户“找不到窗口” */
-el.btnClose.addEventListener('click', () => window.api.hide());
+/* 便笺本：关闭 = 隐藏到托盘（不让用户“找不到窗口”）；桌面便笺：关闭 = 放回便笺本 */
+el.btnClose.addEventListener('click', () => {
+  if (IS_STICKY) {
+    persist();
+    window.api.closeSticky(STICKY_ID);
+  } else {
+    window.api.hide();
+  }
+});
 
+el.btnStick.addEventListener('click', () => { closeMenus(); stickNote(state.activeId); });
+
+let stickyOnTop = true; // 桌面便笺各自记住是否置顶
 el.btnPin.addEventListener('click', async () => {
+  if (IS_STICKY) {
+    stickyOnTop = await window.api.setAlwaysOnTop(!stickyOnTop);
+    el.btnPin.classList.toggle('active', stickyOnTop);
+    return;
+  }
   state.settings.alwaysOnTop = !state.settings.alwaysOnTop;
   await window.api.setAlwaysOnTop(state.settings.alwaysOnTop);
   el.btnPin.classList.toggle('active', state.settings.alwaysOnTop);
+  el.smAlwaysOnTop.checked = state.settings.alwaysOnTop;
   scheduleSave(100);
 });
 
@@ -922,6 +1202,7 @@ el.btnPin.addEventListener('click', async () => {
 function openMenu(menu, btn, align = 'right') {
   menu.classList.remove('hidden');
   el.card.classList.add('menu-open');
+  window.api.setMenuOpen(true);
   const b = btn.getBoundingClientRect();
   const c = el.card.getBoundingClientRect();
   menu.style.maxHeight = Math.max(120, Math.round(c.bottom - b.bottom - 14)) + 'px';
@@ -940,6 +1221,7 @@ function closeMenus() {
   el.settingsMenu.classList.add('hidden');
   el.switcherMenu.classList.add('hidden');
   el.switcher.setAttribute('aria-expanded', 'false');
+  if (el.card.classList.contains('menu-open')) window.api.setMenuOpen(false);
   el.card.classList.remove('menu-open');
 }
 
@@ -978,6 +1260,35 @@ el.smSwatches.addEventListener('click', (e) => {
   scheduleSave(100);
 });
 
+el.smPaper.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  const note = currentNote();
+  if (!b || !note) return;
+  note.paper = b.dataset.paper === 'plain' ? undefined : b.dataset.paper;
+  applyTheme(note);
+  scheduleSave(100);
+});
+
+el.smAppearance.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  state.settings.appearance = b.dataset.mode === 'manual' ? undefined : b.dataset.mode;
+  applySettings();
+  scheduleSave(100);
+});
+
+el.smDock.addEventListener('change', () => {
+  state.settings.dockEnabled = el.smDock.checked;
+  window.api.setDockEnabled(el.smDock.checked);
+  scheduleSave(100);
+});
+
+el.smCat.addEventListener('change', () => {
+  state.settings.showCat = el.smCat.checked;
+  Cat.setEnabled(el.smCat.checked);
+  scheduleSave(100);
+});
+
 el.smFontSize.addEventListener('input', () => {
   state.settings.fontSize = applyFontSize(el.smFontSize.value);
 });
@@ -1004,6 +1315,7 @@ el.toolbar.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button,select,input,option')) return;
   dragState = { x: e.screenX, y: e.screenY, id: e.pointerId };
   dragging = true;
+  window.api.dragStart();
   el.toolbar.setPointerCapture(e.pointerId);
   e.preventDefault();
 });
@@ -1018,8 +1330,10 @@ el.toolbar.addEventListener('pointermove', (e) => {
   }
 });
 const endDrag = () => {
+  if (!dragState) return;
   dragState = null;
   dragging = false;
+  window.api.dragEnd(); // 主进程据此判断是否贴到了屏幕边缘
   recomputeIgnore();
 };
 el.toolbar.addEventListener('pointerup', endDrag);
@@ -1072,35 +1386,107 @@ function formatHotkey(info) {
   return info.ok ? acc : acc + '（注册失败，可能被占用）';
 }
 
+/* ============ 贴边收起 ============ */
+function onDockState(st) {
+  document.body.classList.toggle('docked', !!st);
+  document.body.classList.toggle('collapsed', !!(st && st.collapsed));
+  document.body.dataset.dockEdge = st ? st.edge : '';
+  if (st && st.collapsed) {
+    closeMenus();
+  } else if (st) {
+    el.cardWrap.classList.remove('dock-slide');
+    void el.cardWrap.offsetWidth;
+    el.cardWrap.classList.add('dock-slide'); // 从屏幕边缘滑出
+  }
+}
+el.dockTab.addEventListener('click', () => window.api.dockExpand());
+
+/* ============ 快速捕捉：别的程序里选中文字，按快捷键追加到当前便笺 ============ */
+function formatCaptureTime(ts) {
+  const d = new Date(ts);
+  const pad = (v) => String(v).padStart(2, '0');
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function appendCapture(c) {
+  const note = currentNote();
+  if (!note || !c || !c.text) return;
+  saveCurrentContent();
+  const body = escapeHtml(c.text).replace(/\n/g, '<br>');
+  const src = c.source ? escapeHtml(c.source) : (c.fromClipboard ? '剪贴板' : '');
+  const meta = '— ' + (src ? src + ' · ' : '') + formatCaptureTime(c.at || Date.now());
+  // 末尾若是空行就插在它前面，否则追加，并留一个空行方便继续写
+  const last = el.editor.lastElementChild;
+  const html = `<div class="capture"><div class="capture-text">${body}</div><div class="capture-meta">${meta}</div></div>`;
+  if (last && last.tagName === 'DIV' && !last.textContent.trim() && !last.querySelector('img,input')) {
+    last.insertAdjacentHTML('beforebegin', html);
+  } else {
+    el.editor.insertAdjacentHTML('beforeend', html + '<div><br></div>');
+  }
+  el.editor.scrollTop = el.editor.scrollHeight;
+  Cat.happy();
+  persist();
+  if (!document.hidden) toast('已捕捉到「' + noteTitle(note) + '」');
+}
+
+function formatHotkey(info) {
+  if (!info || !info.acc) return '未注册';
+  const acc = String(info.acc)
+    .replace('CommandOrControl', 'Ctrl')
+    .replace('Control', 'Ctrl')
+    .replace('Command', 'Cmd');
+  return info.ok ? acc : acc + '（注册失败，可能被占用）';
+}
+
 /* ============ 初始化 ============ */
 async function init() {
-  const data = await window.api.loadData();
-  state.notes = data.notes || [];
-  state.settings = data.settings;
+  const [data, ctx] = await Promise.all([window.api.loadData(), window.api.getContext()]);
+  state.notes = (data.notes || []).map(n => Object.assign({}, n));
+  state.settings = Object.assign({}, data.settings);
+  state.stuck = new Set((ctx && ctx.stickies) || []);
+  rememberBaseline(); // 以主进程的数据为基准，之后的本地修改都会作为增量发出
 
-  if (!state.notes.length) {
-    state.notes.push({ id: uid(), title: '', tags: [], content: '', createdAt: Date.now(), updatedAt: Date.now() });
+  if (IS_STICKY) {
+    state.activeId = STICKY_ID;
+    if (!currentNote()) { window.api.closeSticky(STICKY_ID); return; }
+    stickyOnTop = !!(ctx && ctx.onTop);
+    el.btnPin.classList.toggle('active', stickyOnTop);
+    el.btnPin.title = '桌面便笺置顶';
+    el.btnClose.title = '放回便笺本';
+    el.btnClose.setAttribute('aria-label', '放回便笺本');
+    el.switcher.title = '双击重命名（F2）';
+  } else {
+    if (!state.notes.length) state.notes.push(blankNote());
+    const saved = state.settings.activeNoteId;
+    const usable = (id) => id && state.notes.some(n => n.id === id) && !state.stuck.has(id);
+    state.activeId = usable(saved) ? saved : (state.notes.find(n => !state.stuck.has(n.id)) || (() => {
+      const fresh = blankNote();
+      state.notes.unshift(fresh);
+      return fresh;
+    })()).id;
+    state.settings.activeNoteId = state.activeId;
+    // 启动时清掉历史遗留的空便笺（贴在桌面上的不动）
+    pruneEmptyNotes(state.activeId);
   }
-  state.activeId = state.settings.activeNoteId && state.notes.find(n => n.id === state.settings.activeNoteId)
-    ? state.settings.activeNoteId
-    : state.notes[0].id;
-  // 启动时清掉历史遗留的空便笺
-  if (pruneEmptyNotes(state.activeId)) state.settings.activeNoteId = state.activeId;
 
-  // 应用设置
-  state.settings.fontSize = applyFontSize(state.settings.fontSize);
-  applyAutohide(state.settings.autoHideToolbar !== false);
-  el.smOpacity.value = state.settings.opacity;
-  applyGlass(state.settings.opacity);
-  el.smAlwaysOnTop.checked = state.settings.alwaysOnTop;
-  el.btnPin.classList.toggle('active', state.settings.alwaysOnTop);
-  el.smHotkeyHint.textContent = formatHotkey(await window.api.getHotkey());
+  applySettings();
+  const hk = await window.api.getHotkey();
+  el.smHotkeyHint.textContent = formatHotkey(hk);
+  el.smCaptureHint.textContent = formatHotkey(hk && hk.capture);
 
   loadActiveNote();
   scheduleSave(100);
 
-  // 托盘"新建便签"指令
-  if (window.api.onNewNote) window.api.onNewNote(() => newNote());
+  window.api.onPatched(applyRemotePatch);
+  window.api.onStickies(onStickiesChanged);
+  window.api.onDockState(onDockState);
+  if (ctx && ctx.dock) onDockState(ctx.dock);
+  if (!IS_STICKY) {
+    window.api.onNewNote(() => newNote());
+    window.api.onCapture(appendCapture);
+  }
+  // 关窗 / 刷新前把没发出去的改动发出去
+  window.addEventListener('beforeunload', persist);
 }
 
 init();

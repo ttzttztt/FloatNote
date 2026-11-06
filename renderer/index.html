@@ -9,7 +9,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- 便笺主体（四周留出透明边距用于投影） -->
+  <!-- 便笺主体（四周留出透明边距用于投影）。外层负责阴影与缩放手柄，
+       这样“折角”纸张裁掉卡片一角时阴影和手柄不会被一起裁掉 -->
+  <div class="card-wrap" id="card-wrap">
   <div id="card" class="card">
     <header class="toolbar" id="toolbar">
       <div class="toolbar-left">
@@ -24,6 +26,9 @@
           </svg>
           <span class="pill-label" id="note-title">空便笺</span>
           <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
+        </button>
+        <button class="tbtn" id="btn-stick" title="贴到桌面（也可以把菜单里的便笺拖出窗口）" aria-label="贴到桌面">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.2h7.4l2.6 2.6v7H3z"/><path d="M10.4 3.2v2.6H13"/><path d="M6 9.4l2-2 2 2M8 7.4v4"/></svg>
         </button>
         <button class="tbtn" id="btn-delete" title="删除当前便笺（可撤销）" aria-label="删除当前便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
@@ -53,29 +58,39 @@
 
     <div class="status-bar" id="status-bar" aria-live="off"></div>
 
-    <div class="paw-deco" aria-hidden="true">
-      <svg viewBox="0 0 96 72" aria-hidden="true">
-        <g transform="translate(2 26) rotate(-12)">
-          <ellipse cx="10" cy="13" rx="8.6" ry="7.4"/>
-          <ellipse cx="4.4" cy="3.4" rx="3.6" ry="4"/>
-          <ellipse cx="12.2" cy="0.8" rx="3.6" ry="4"/>
-          <ellipse cx="19.6" cy="4.6" rx="3.4" ry="3.8"/>
+    <!-- 角落里的小猫：打字时歪头看，完成待办会开心，久不操作会睡着；点它可以摸摸头 -->
+    <svg class="cat" id="cat" viewBox="0 0 64 56" role="img" aria-label="小猫">
+      <g class="cat-tail"><path d="M45 47 C57 48 61 38 55 30"/></g>
+      <g class="cat-body">
+        <ellipse cx="32" cy="44" rx="15" ry="10.5"/>
+        <ellipse class="cat-paw" cx="26.5" cy="53" rx="3.6" ry="2.6"/>
+        <ellipse class="cat-paw" cx="37.5" cy="53" rx="3.6" ry="2.6"/>
+      </g>
+      <g class="cat-head">
+        <path d="M18.6 21 L20.6 7.4 L29 14.6 Z"/>
+        <path d="M45.4 21 L43.4 7.4 L35 14.6 Z"/>
+        <ellipse cx="32" cy="24" rx="14.4" ry="12"/>
+        <g class="cat-eyes">
+          <ellipse cx="26.4" cy="24" rx="1.9" ry="2.5"/>
+          <ellipse cx="37.6" cy="24" rx="1.9" ry="2.5"/>
         </g>
-        <g transform="translate(22 44) rotate(-6)" opacity=".72">
-          <ellipse cx="6" cy="9" rx="5.6" ry="4.8"/>
-          <ellipse cx="2.4" cy="2.6" rx="2.4" ry="2.7"/>
-          <ellipse cx="8.2" cy="0.8" rx="2.4" ry="2.7"/>
-          <ellipse cx="13.2" cy="3.4" rx="2.2" ry="2.5"/>
+        <g class="cat-closed">
+          <path d="M23.8 24.4 q2.6 2.2 5.2 0"/>
+          <path d="M35 24.4 q2.6 2.2 5.2 0"/>
         </g>
-        <g transform="translate(34 22) rotate(8)" opacity=".5">
-          <ellipse cx="4" cy="6.4" rx="4" ry="3.4"/>
-          <ellipse cx="1.6" cy="1.8" rx="1.7" ry="1.9"/>
-          <ellipse cx="5.8" cy="0.6" rx="1.7" ry="1.9"/>
-        </g>
-      </svg>
-    </div>
+        <path class="cat-nose" d="M30.8 28.2 h2.4 l-1.2 1.4 z"/>
+      </g>
+      <g class="cat-zzz"><text x="46" y="14">z</text><text x="52" y="7">z</text></g>
+    </svg>
 
-    <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
+    <!-- 贴边收起后显示的细边 -->
+    <div class="dock-tab" id="dock-tab" title="展开便笺">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="15.5" rx="5.6" ry="4.6"/><ellipse cx="5.6" cy="9.4" rx="2.3" ry="2.8"/><ellipse cx="10" cy="5.6" rx="2.3" ry="2.8"/><ellipse cx="14.6" cy="5.6" rx="2.3" ry="2.8"/><ellipse cx="18.6" cy="9.4" rx="2.3" ry="2.8"/></svg>
+      <span class="dock-title" id="dock-title"></span>
+    </div>
+  </div>
+  <div class="fold-flap" aria-hidden="true"></div>
+  <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
   </div>
 
   <!-- 便笺切换浮层（替代原生 select，原生下拉列表无法自定义样式） -->
@@ -90,7 +105,24 @@
         <button class="swatch" data-theme="yellow" title="暖黄便利贴"></button>
         <button class="swatch" data-theme="mint" title="薄荷绿"></button>
         <button class="swatch" data-theme="pink" title="樱花粉"></button>
+        <button class="swatch" data-theme="kraft" title="牛皮纸"></button>
         <button class="swatch" data-theme="dark" title="深色"></button>
+      </span>
+    </div>
+    <div class="pm-row"><span>纸张</span>
+      <span class="seg" id="sm-paper">
+        <button data-paper="plain" title="素纸">素</button>
+        <button data-paper="lines" title="横线本">横线</button>
+        <button data-paper="grid" title="方格本">方格</button>
+        <button data-paper="dots" title="点阵本">点阵</button>
+        <button data-paper="fold" title="便利贴折角">折角</button>
+      </span>
+    </div>
+    <div class="pm-row"><span>外观</span>
+      <span class="seg" id="sm-appearance">
+        <button data-mode="manual" title="始终使用便笺自己的颜色">手动</button>
+        <button data-mode="system" title="系统切到深色模式时，便笺也变暗">跟随系统</button>
+        <button data-mode="time" title="早上 6–10 点偏暖，晚上 10 点到早上 6 点自动变暗">跟随时间</button>
       </span>
     </div>
     <div class="pm-row"><span>字号</span>
@@ -99,8 +131,11 @@
     <label class="pm-row"><span>背景透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
     <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
     <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
+    <label class="pm-row main-only"><span>拖到屏幕边缘时贴边收起</span><input type="checkbox" id="sm-dock" checked></label>
+    <label class="pm-row"><span>显示小猫</span><input type="checkbox" id="sm-cat" checked></label>
     <div class="pm-sep"></div>
     <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
+    <div class="pm-row"><span>快速捕捉</span><span class="pm-hint" id="sm-capture-hint"></span></div>
     <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
     <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
     <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
@@ -109,6 +144,7 @@
     <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标 / 唤起快捷键</span></div>
   </div>
 
+  <script src="life.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

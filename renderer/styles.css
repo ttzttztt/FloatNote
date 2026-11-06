@@ -100,6 +100,26 @@ body[data-theme="pink"] {
   --menu-bg: rgba(255, 248, 250, .98);
   --placeholder: #b48d9b;
 }
+body[data-theme="kraft"] {
+  --bg1: 236, 218, 186;
+  --bg2: 228, 207, 170;
+  --bg3: 216, 192, 151;
+  --text: #3e2f1c;
+  --ink: #36281a;
+  --muted: #86704f;
+  --icon: #7a6444;
+  --icon-strong: #5a4529;
+  --accent: #b0643a;
+  --accent-soft: rgba(176, 100, 58, .14);
+  --accent-text: #8c4a24;
+  --hover: rgba(90, 60, 20, .08);
+  --border: rgba(90, 60, 20, .16);
+  --line: rgba(90, 60, 20, .18);
+  --field: rgba(250, 240, 222, .7);
+  --field-border: rgba(90, 60, 20, .32);
+  --menu-bg: rgba(246, 235, 214, .98);
+  --placeholder: #a38d6b;
+}
 body[data-theme="dark"] {
   --bg1: 46, 47, 55;
   --bg2: 39, 40, 48;
@@ -139,12 +159,17 @@ html, body {
 }
 
 /* ============ 便笺卡片（磨砂玻璃） ============ */
-.card {
+/* 外层负责定位、阴影（折角纸张时）和缩放手柄；卡片铺满外层 */
+.card-wrap {
   position: absolute;
   left: var(--gutter);
   top: var(--gutter);
   right: var(--gutter);
   bottom: var(--gutter);
+}
+.card {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   /* 注：透明窗口里 backdrop-filter 拿不到桌面像素，模糊不会生效，
@@ -162,6 +187,7 @@ html, body {
     inset 0 1px 0 var(--highlight),
     inset 0 -1px 0 var(--rim);
   overflow: hidden;
+  transition: background .4s;
 }
 
 /* 磨砂颗粒：低透明度噪声叠加，削弱“塑料片”感 */
@@ -299,7 +325,7 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   opacity: 0;
   transform: translateY(-3px);
 }
-.card:not(:hover):not(.menu-open) .resize-grip { opacity: 0; }
+.card-wrap:not(:hover) .resize-grip { opacity: 0; }
 
 /* ============ 标签栏 ============ */
 .tag-bar {
@@ -341,7 +367,7 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
 .editor {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px 34px;
+  padding: 16px 20px 46px; /* 底部给小猫和状态栏留位置 */
   outline: none;
   font-size: var(--font-size);
   line-height: 1.65;
@@ -389,22 +415,6 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   animation: check-pop .18s ease-out;
 }
 @keyframes check-pop { 40% { transform: scale(.82); } }
-/* 左下角爪印装饰（参考图里的轻量点缀） */
-.paw-deco {
-  position: absolute;
-  left: 8px;
-  bottom: 4px;
-  width: 96px;
-  height: 72px;
-  color: var(--muted);
-  opacity: 0.15;
-  pointer-events: none;
-  z-index: 0;
-  transition: opacity .3s;
-}
-/* 爪印只在空便笺时出现，写字后淡出 */
-.editor:not(:empty) ~ .paw-deco { opacity: 0; }
-.paw-deco svg { width: 100%; height: 100%; fill: currentColor; display: block; }
 
 .editor .todo:has(> input:checked) {
   text-decoration: line-through;
@@ -655,3 +665,280 @@ body[data-theme="dark"] .mi-dot[data-theme="dark"] { box-shadow: inset 0 0 0 1.5
   cursor: pointer;
 }
 .toast-btn:hover { background: rgba(255, 255, 255, .28); }
+
+/* ============ 牛皮纸纤维 ============ */
+body[data-theme="kraft"] .card::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.75 0.32' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.24  0 0 0 0 0.12  0 0 0 0.9 0'/></filter><rect width='220' height='220' filter='url(%23f)'/></svg>");
+  background-size: 220px 220px;
+  opacity: .16;
+  mix-blend-mode: multiply;
+}
+
+/* ============ 纸张：横线 / 方格 / 点阵（随内容滚动） ============ */
+body { --rule: color-mix(in srgb, var(--accent) 16%, transparent); --lh: calc(var(--font-size) * 1.65); }
+body[data-paper="lines"] .editor,
+body[data-paper="grid"] .editor,
+body[data-paper="dots"] .editor {
+  background-attachment: local;
+  background-origin: content-box;
+  background-clip: padding-box;
+}
+body[data-paper="lines"] .editor {
+  background-image: linear-gradient(to bottom, transparent calc(var(--lh) - 1px), var(--rule) calc(var(--lh) - 1px));
+  background-size: 100% var(--lh);
+}
+body[data-paper="grid"] .editor {
+  background-image:
+    linear-gradient(to bottom, transparent calc(var(--lh) - 1px), var(--rule) calc(var(--lh) - 1px)),
+    linear-gradient(to right, transparent calc(var(--lh) - 1px), var(--rule) calc(var(--lh) - 1px));
+  background-size: var(--lh) var(--lh);
+}
+body[data-paper="dots"] .editor {
+  background-image: radial-gradient(circle at 1px calc(var(--lh) - 1px), color-mix(in srgb, var(--accent) 34%, transparent) 1px, transparent 1.6px);
+  background-size: calc(var(--lh) * .9) var(--lh);
+}
+
+/* ============ 纸张：便利贴折角（右下角真的被折起来，露出桌面） ============ */
+body { --fold: 30px; }
+body[data-paper="fold"] .card {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--fold)), calc(100% - var(--fold)) 100%, 0 100%);
+  box-shadow: inset 0 1px 0 var(--highlight), inset 0 -1px 0 var(--rim);
+}
+/* 卡片被裁剪后 box-shadow 会被一并裁掉，改用外层 drop-shadow，阴影会贴着折角的形状 */
+body[data-paper="fold"] .card-wrap {
+  filter: drop-shadow(0 8px 14px rgba(24, 28, 44, .15)) drop-shadow(0 1px 3px rgba(24, 28, 44, .10));
+}
+.fold-flap { display: none; }
+body[data-paper="fold"] .fold-flap {
+  display: block;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  pointer-events: none;
+  border-top-left-radius: 5px;
+  background: linear-gradient(135deg, rgb(var(--bg3)) 0%, rgb(var(--bg2)) 46%, rgba(0, 0, 0, .06) 50%, transparent 50.5%);
+  filter: drop-shadow(-1px -1px 1.5px rgba(0, 0, 0, .12));
+}
+body[data-paper="fold"] .status-bar { right: calc(var(--fold) + 6px); }
+body[data-paper="fold"] .resize-grip { background: none; right: 0; bottom: 0; width: 22px; height: 22px; }
+
+/* ============ 外观跟随时间：早上偏暖 ============ */
+body.warm .card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 196, 120, .14), rgba(255, 170, 90, .06));
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+/* ============ 角落里的小猫 ============ */
+.cat {
+  position: absolute;
+  left: 12px;
+  bottom: 4px;
+  width: 50px;
+  height: 44px;
+  z-index: 2;
+  overflow: visible;
+  color: var(--icon);
+  opacity: .5;
+  cursor: pointer;
+  transition: opacity .25s;
+}
+.cat:hover { opacity: .75; }
+.cat[hidden] { display: none; }
+.cat g, .cat path, .cat ellipse { transform-box: fill-box; }
+.cat-body ellipse, .cat-head > path:not(.cat-nose), .cat-head > ellipse { fill: currentColor; }
+.cat-tail path { fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; }
+.cat-eyes ellipse, .cat-nose { fill: rgb(var(--bg1)); }
+.cat-closed path { fill: none; stroke: rgb(var(--bg1)); stroke-width: 1.6; stroke-linecap: round; }
+.cat-closed { display: none; }
+.cat-zzz { display: none; fill: currentColor; font: 600 9px var(--font-ui); }
+
+/* 发呆：尾巴慢慢甩，偶尔眨眼 */
+.cat-tail { transform-origin: 0% 100%; animation: cat-tail 3.2s ease-in-out infinite; }
+@keyframes cat-tail { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-14deg); } }
+.cat-eyes { transform-origin: 50% 50%; animation: cat-blink 5.5s infinite; }
+@keyframes cat-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+.cat-head { transform-origin: 50% 90%; transition: transform .35s; }
+
+/* 你在打字：歪头盯着看 */
+.cat[data-state="watch"] .cat-head { transform: rotate(-9deg) translateY(-1px); }
+.cat[data-state="watch"] .cat-eyes { transform: translateX(1.4px); animation: none; }
+.cat[data-state="watch"] .cat-tail { animation-duration: 1.4s; }
+
+/* 开心：跳两下、眯眼 */
+.cat[data-state="happy"] { animation: cat-hop .7s ease-out 2; }
+.cat[data-state="happy"] .cat-eyes { display: none; }
+.cat[data-state="happy"] .cat-closed { display: inline; }
+.cat[data-state="happy"] .cat-closed path { transform: scaleY(-1); transform-origin: 50% 50%; }
+.cat[data-state="happy"] .cat-tail { animation-duration: .6s; }
+@keyframes cat-hop { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-7px) rotate(-3deg); } 60% { transform: translateY(0) scaleY(.94); } }
+
+/* 睡着：低头、闭眼、慢慢呼吸、冒 z */
+.cat[data-state="sleep"] .cat-eyes { display: none; }
+.cat[data-state="sleep"] .cat-closed { display: inline; }
+.cat[data-state="sleep"] .cat-head { transform: translateY(3px) rotate(6deg); }
+.cat[data-state="sleep"] .cat-tail { animation: none; transform: rotate(18deg); }
+.cat[data-state="sleep"] .cat-body { transform-origin: 50% 100%; animation: cat-breathe 3.6s ease-in-out infinite; }
+.cat[data-state="sleep"] .cat-zzz { display: inline; }
+.cat[data-state="sleep"] .cat-zzz text { animation: cat-z 3s ease-in-out infinite; }
+.cat[data-state="sleep"] .cat-zzz text + text { animation-delay: 1.2s; }
+@keyframes cat-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.05); } }
+@keyframes cat-z { 0% { opacity: 0; transform: translate(0, 4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -6px); } }
+
+/* 醒来：伸个懒腰 */
+.cat[data-state="wake"] .cat-body { transform-origin: 30% 100%; animation: cat-stretch 1.3s ease-in-out; }
+.cat[data-state="wake"] .cat-head { animation: cat-yawn 1.3s ease-in-out; }
+@keyframes cat-stretch { 0%, 100% { transform: none; } 40%, 60% { transform: scaleX(1.18) scaleY(.86); } }
+@keyframes cat-yawn { 0%, 100% { transform: none; } 40%, 60% { transform: translate(-3px, 3px) rotate(-8deg); } }
+
+.cat-heart {
+  position: absolute;
+  z-index: 3;
+  color: var(--accent);
+  font-size: 13px;
+  pointer-events: none;
+  animation: heart-up 1.1s ease-out forwards;
+}
+@keyframes heart-up { from { opacity: 0; transform: translateY(4px) scale(.6); } 25% { opacity: 1; } to { opacity: 0; transform: translateY(-26px) scale(1.1); } }
+
+/* ============ 完成奖励 ============ */
+.spark {
+  position: fixed;
+  z-index: 50;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  color: var(--accent);
+  pointer-events: none;
+  animation: spark .75s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.spark svg { width: 100%; height: 100%; fill: currentColor; display: block; }
+.spark.dot { width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: currentColor; }
+@keyframes spark {
+  from { opacity: 1; transform: translate(0, 0) scale(var(--s)) rotate(0); }
+  to { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(var(--s)) rotate(var(--rot)); }
+}
+.trail-paw {
+  position: fixed;
+  z-index: 50;
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  transform: rotate(var(--rot));
+  animation: trail 1.8s ease-out forwards;
+}
+.trail-paw svg { width: 100%; height: 100%; fill: currentColor; display: block; }
+@keyframes trail { 0% { opacity: 0; transform: rotate(var(--rot)) scale(.4); } 12% { opacity: .55; transform: rotate(var(--rot)) scale(1); } 70% { opacity: .45; } 100% { opacity: 0; } }
+
+/* ============ 撕掉 / 贴回 ============ */
+.tear-sheet {
+  z-index: 30;
+  pointer-events: none;
+  transform-origin: 0 0;
+  animation: tear-off .6s cubic-bezier(.5, 0, .75, .4) forwards;
+}
+.tear-sheet .toolbar, .tear-sheet .cat, .tear-sheet .dock-tab { visibility: hidden; }
+@keyframes tear-off {
+  0% { transform: none; opacity: 1; }
+  22% { transform: rotate(-2.5deg) translate(2px, 6px); opacity: 1; }
+  100% { transform: rotate(-16deg) translate(-40px, -110%) scale(.72); opacity: 0; }
+}
+.card.stick-in { animation: stick-in .55s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes stick-in {
+  from { transform: translateY(-16px) rotate(1.5deg) scale(1.03); opacity: .35; }
+  to { transform: none; opacity: 1; }
+}
+
+/* ============ 设置：分段按钮 ============ */
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--hover); gap: 2px; }
+.seg button {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 3px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg button:hover { color: var(--text); }
+.seg button.active { background: var(--menu-bg); color: var(--accent-text); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.swatch[data-theme="kraft"] { background: #d8bb8f; }
+.mi-dot[data-theme="kraft"] { background: linear-gradient(135deg, #e2c497, #b98b55); }
+
+/* ============ 切换菜单：已贴在桌面上的便笺 ============ */
+.mi-badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.menu-item.stuck .mi-title { opacity: .8; }
+
+/* ============ 快速捕捉的内容块 ============ */
+.editor .capture {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 2px 8px 8px 2px;
+  background: var(--accent-soft);
+}
+.editor .capture-meta { margin-top: 2px; font-size: .78em; color: var(--muted); }
+
+/* ============ 桌面便笺窗口 ============ */
+body.mode-sticky #btn-new,
+body.mode-sticky #btn-delete,
+body.mode-sticky #btn-stick,
+body.mode-sticky #btn-hide,
+body.mode-sticky .vsep,
+body.mode-sticky .pill-caret,
+body.mode-sticky .pill-icon,
+body.mode-sticky .main-only { display: none; }
+body.mode-sticky .pill { cursor: default; padding-left: 4px; }
+body.mode-sticky .pill:hover { background: transparent; }
+body.mode-sticky .pill-label { max-width: 120px; }
+body.mode-sticky .toolbar { padding: 8px 10px; }
+body.mode-sticky .editor { padding: 8px 16px 46px; }
+body.mode-sticky .tag-bar { padding-left: 16px; }
+
+/* ============ 贴边收起 ============ */
+.dock-tab { display: none; }
+body.collapsed .card-wrap { inset: 0; }
+body.collapsed .card > *:not(.dock-tab) { display: none; }
+body.collapsed .card { border-radius: 10px; cursor: pointer; }
+body.collapsed .resize-grip, body.collapsed .fold-flap { display: none; }
+body.collapsed[data-dock-edge="left"] .card { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
+body.collapsed[data-dock-edge="right"] .card { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+body.collapsed[data-dock-edge="top"] .card { border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; }
+body.collapsed .dock-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  color: var(--icon);
+  font-size: 12px;
+  overflow: hidden;
+}
+body.collapsed:not([data-dock-edge="top"]) .dock-tab { flex-direction: column; }
+body.collapsed:not([data-dock-edge="top"]) .dock-title { writing-mode: vertical-rl; letter-spacing: 1px; max-height: 70px; }
+.dock-tab svg { width: 13px; height: 13px; fill: var(--accent); flex: 0 0 auto; }
+.dock-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 110px; color: var(--text); }
+.card-wrap.dock-slide { animation: dock-in .2s ease-out; }
+body[data-dock-edge="left"] .card-wrap.dock-slide { --dock-from: translateX(-24px); }
+body[data-dock-edge="right"] .card-wrap.dock-slide { --dock-from: translateX(24px); }
+body[data-dock-edge="top"] .card-wrap.dock-slide { --dock-from: translateY(-18px); }
+@keyframes dock-in { from { transform: var(--dock-from, none); opacity: .4; } }
