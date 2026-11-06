@@ -1138,7 +1138,7 @@ el.editor.addEventListener('paste', async (e) => {
   }
 });
 
-// 待办勾选：迸出几颗小圆点；整张便笺的待办全部完成时，圆点更多并提示
+// 待办勾选：迸出几颗小圆点；整张便笺的待办全部完成时只给一句提示
 el.editor.addEventListener('change', (e) => {
   const cb = e.target;
   if (!cb || !cb.matches('input[type=checkbox]')) return;
@@ -1147,8 +1147,8 @@ el.editor.addEventListener('change', (e) => {
     const r = cb.getBoundingClientRect();
     const boxes = [...el.editor.querySelectorAll('input[type="checkbox"]')];
     const allDone = boxes.length >= 2 && boxes.every(b => b.checked);
-    window.Life.burst(r.left + r.width / 2, r.top + r.height / 2, allDone);
     if (allDone) toast('全部完成，休息一下吧');
+    else window.Life.burst(r.left + r.width / 2, r.top + r.height / 2);
   } else {
     countDone(-1);
   }

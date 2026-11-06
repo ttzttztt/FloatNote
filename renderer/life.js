@@ -6,15 +6,15 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ---------- 完成待办的小奖励 ----------
-     勾选时从复选框处迸出几颗小圆点；big = 整张便笺全部完成，圆点更多、散得更开 */
-  function burst(x, y, big = false) {
+     勾选时从复选框处迸出几颗小圆点 */
+  function burst(x, y) {
     if (reduceMotion) return;
-    const n = big ? 16 : 7;
+    const n = 7;
     for (let i = 0; i < n; i++) {
       const p = document.createElement('span');
       p.className = 'spark';
       const ang = (Math.PI * 2 * i) / n + Math.random() * 0.5;
-      const dist = (big ? 34 : 20) + Math.random() * (big ? 30 : 14);
+      const dist = 20 + Math.random() * 14;
       p.style.left = x + 'px';
       p.style.top = y + 'px';
       p.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
