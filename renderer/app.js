@@ -25,7 +25,6 @@ const el = {
   smPaper: document.getElementById('sm-paper'),
   smAppearance: document.getElementById('sm-appearance'),
   smDock: document.getElementById('sm-dock'),
-  smCat: document.getElementById('sm-cat'),
   smCaptureHint: document.getElementById('sm-capture-hint'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),
@@ -53,7 +52,6 @@ const el = {
 
 const THEMES = ['glass', 'yellow', 'mint', 'pink', 'kraft', 'dark'];
 const PAPERS = ['plain', 'lines', 'grid', 'dots', 'fold'];
-const { Cat } = window.Life;
 
 const currentNote = () => state.notes.find(n => n.id === state.activeId) || null;
 
@@ -475,8 +473,6 @@ function applySettings() {
     el.btnPin.classList.toggle('active', !!s.alwaysOnTop);
   }
   el.smDock.checked = s.dockEnabled !== false;
-  el.smCat.checked = s.showCat !== false;
-  Cat.setEnabled(s.showCat !== false);
   el.smAppearance.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === (s.appearance || 'manual')));
   applyTheme(currentNote());
   updateStatus();
@@ -1142,7 +1138,7 @@ el.editor.addEventListener('paste', async (e) => {
   }
 });
 
-// 待办勾选：迸出小爪印；整张便笺的待办全部完成时，小猫庆祝、爪印走过卡片
+// 待办勾选：迸出小爪印；整张便笺的待办全部完成时，一串爪印走过卡片
 el.editor.addEventListener('change', (e) => {
   const cb = e.target;
   if (!cb || !cb.matches('input[type=checkbox]')) return;
@@ -1152,11 +1148,8 @@ el.editor.addEventListener('change', (e) => {
     window.Life.burst(r.left + r.width / 2, r.top + r.height / 2);
     const boxes = [...el.editor.querySelectorAll('input[type="checkbox"]')];
     if (boxes.length >= 2 && boxes.every(b => b.checked)) {
-      Cat.celebrate();
       window.Life.pawTrail(el.card);
-      toast('全部完成！小猫给你点个赞');
-    } else {
-      Cat.happy();
+      toast('全部完成，休息一下吧');
     }
   } else {
     countDone(-1);
@@ -1164,10 +1157,7 @@ el.editor.addEventListener('change', (e) => {
   updateStatus();
   scheduleSave(100);
 });
-el.editor.addEventListener('input', () => {
-  Cat.typing();
-  scheduleSave();
-});
+el.editor.addEventListener('input', () => scheduleSave());
 
 /* ============ 窗口控制 ============ */
 el.btnHide.addEventListener('click', () => window.api.hide());
@@ -1283,11 +1273,6 @@ el.smDock.addEventListener('change', () => {
   scheduleSave(100);
 });
 
-el.smCat.addEventListener('change', () => {
-  state.settings.showCat = el.smCat.checked;
-  Cat.setEnabled(el.smCat.checked);
-  scheduleSave(100);
-});
 
 el.smFontSize.addEventListener('input', () => {
   state.settings.fontSize = applyFontSize(el.smFontSize.value);
@@ -1424,7 +1409,6 @@ function appendCapture(c) {
     el.editor.insertAdjacentHTML('beforeend', html + '<div><br></div>');
   }
   el.editor.scrollTop = el.editor.scrollHeight;
-  Cat.happy();
   persist();
   if (!document.hidden) toast('已捕捉到「' + noteTitle(note) + '」');
 }

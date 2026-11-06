@@ -367,7 +367,7 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
 .editor {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px 46px; /* 底部给小猫和状态栏留位置 */
+  padding: 16px 20px 34px; /* 底部给状态栏留位置 */
   outline: none;
   font-size: var(--font-size);
   line-height: 1.65;
@@ -415,6 +415,23 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   animation: check-pop .18s ease-out;
 }
 @keyframes check-pop { 40% { transform: scale(.82); } }
+
+/* 左下角爪印装饰（参考图里的轻量点缀） */
+.paw-deco {
+  position: absolute;
+  left: 8px;
+  bottom: 4px;
+  width: 96px;
+  height: 72px;
+  color: var(--muted);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity .3s;
+}
+/* 爪印只在空便笺时出现，写字后淡出 */
+.editor:not(:empty) ~ .paw-deco { opacity: 0; }
+.paw-deco svg { width: 100%; height: 100%; fill: currentColor; display: block; }
 
 .editor .todo:has(> input:checked) {
   text-decoration: line-through;
@@ -736,78 +753,6 @@ body.warm .card::after {
   z-index: 0;
 }
 
-/* ============ 角落里的小猫 ============ */
-.cat {
-  position: absolute;
-  left: 12px;
-  bottom: 4px;
-  width: 50px;
-  height: 44px;
-  z-index: 2;
-  overflow: visible;
-  color: var(--icon);
-  opacity: .5;
-  cursor: pointer;
-  transition: opacity .25s;
-}
-.cat:hover { opacity: .75; }
-.cat[hidden] { display: none; }
-.cat g, .cat path, .cat ellipse { transform-box: fill-box; }
-.cat-body ellipse, .cat-head > path:not(.cat-nose), .cat-head > ellipse { fill: currentColor; }
-.cat-tail path { fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; }
-.cat-eyes ellipse, .cat-nose { fill: rgb(var(--bg1)); }
-.cat-closed path { fill: none; stroke: rgb(var(--bg1)); stroke-width: 1.6; stroke-linecap: round; }
-.cat-closed { display: none; }
-.cat-zzz { display: none; fill: currentColor; font: 600 9px var(--font-ui); }
-
-/* 发呆：尾巴慢慢甩，偶尔眨眼 */
-.cat-tail { transform-origin: 0% 100%; animation: cat-tail 3.2s ease-in-out infinite; }
-@keyframes cat-tail { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-14deg); } }
-.cat-eyes { transform-origin: 50% 50%; animation: cat-blink 5.5s infinite; }
-@keyframes cat-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
-.cat-head { transform-origin: 50% 90%; transition: transform .35s; }
-
-/* 你在打字：歪头盯着看 */
-.cat[data-state="watch"] .cat-head { transform: rotate(-9deg) translateY(-1px); }
-.cat[data-state="watch"] .cat-eyes { transform: translateX(1.4px); animation: none; }
-.cat[data-state="watch"] .cat-tail { animation-duration: 1.4s; }
-
-/* 开心：跳两下、眯眼 */
-.cat[data-state="happy"] { animation: cat-hop .7s ease-out 2; }
-.cat[data-state="happy"] .cat-eyes { display: none; }
-.cat[data-state="happy"] .cat-closed { display: inline; }
-.cat[data-state="happy"] .cat-closed path { transform: scaleY(-1); transform-origin: 50% 50%; }
-.cat[data-state="happy"] .cat-tail { animation-duration: .6s; }
-@keyframes cat-hop { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-7px) rotate(-3deg); } 60% { transform: translateY(0) scaleY(.94); } }
-
-/* 睡着：低头、闭眼、慢慢呼吸、冒 z */
-.cat[data-state="sleep"] .cat-eyes { display: none; }
-.cat[data-state="sleep"] .cat-closed { display: inline; }
-.cat[data-state="sleep"] .cat-head { transform: translateY(3px) rotate(6deg); }
-.cat[data-state="sleep"] .cat-tail { animation: none; transform: rotate(18deg); }
-.cat[data-state="sleep"] .cat-body { transform-origin: 50% 100%; animation: cat-breathe 3.6s ease-in-out infinite; }
-.cat[data-state="sleep"] .cat-zzz { display: inline; }
-.cat[data-state="sleep"] .cat-zzz text { animation: cat-z 3s ease-in-out infinite; }
-.cat[data-state="sleep"] .cat-zzz text + text { animation-delay: 1.2s; }
-@keyframes cat-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.05); } }
-@keyframes cat-z { 0% { opacity: 0; transform: translate(0, 4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -6px); } }
-
-/* 醒来：伸个懒腰 */
-.cat[data-state="wake"] .cat-body { transform-origin: 30% 100%; animation: cat-stretch 1.3s ease-in-out; }
-.cat[data-state="wake"] .cat-head { animation: cat-yawn 1.3s ease-in-out; }
-@keyframes cat-stretch { 0%, 100% { transform: none; } 40%, 60% { transform: scaleX(1.18) scaleY(.86); } }
-@keyframes cat-yawn { 0%, 100% { transform: none; } 40%, 60% { transform: translate(-3px, 3px) rotate(-8deg); } }
-
-.cat-heart {
-  position: absolute;
-  z-index: 3;
-  color: var(--accent);
-  font-size: 13px;
-  pointer-events: none;
-  animation: heart-up 1.1s ease-out forwards;
-}
-@keyframes heart-up { from { opacity: 0; transform: translateY(4px) scale(.6); } 25% { opacity: 1; } to { opacity: 0; transform: translateY(-26px) scale(1.1); } }
-
 /* ============ 完成奖励 ============ */
 .spark {
   position: fixed;
@@ -846,7 +791,7 @@ body.warm .card::after {
   transform-origin: 0 0;
   animation: tear-off .6s cubic-bezier(.5, 0, .75, .4) forwards;
 }
-.tear-sheet .toolbar, .tear-sheet .cat, .tear-sheet .dock-tab { visibility: hidden; }
+.tear-sheet .toolbar, .tear-sheet .paw-deco, .tear-sheet .dock-tab { visibility: hidden; }
 @keyframes tear-off {
   0% { transform: none; opacity: 1; }
   22% { transform: rotate(-2.5deg) translate(2px, 6px); opacity: 1; }
@@ -910,7 +855,7 @@ body.mode-sticky .pill { cursor: default; padding-left: 4px; }
 body.mode-sticky .pill:hover { background: transparent; }
 body.mode-sticky .pill-label { max-width: 120px; }
 body.mode-sticky .toolbar { padding: 8px 10px; }
-body.mode-sticky .editor { padding: 8px 16px 46px; }
+body.mode-sticky .editor { padding: 8px 16px 34px; }
 body.mode-sticky .tag-bar { padding-left: 16px; }
 
 /* ============ 贴边收起 ============ */
