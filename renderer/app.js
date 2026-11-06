@@ -52,8 +52,11 @@ const el = {
 
 const THEMES = ['glass', 'yellow', 'mint', 'pink', 'kraft', 'dark'];
 const PAPERS = ['plain', 'lines', 'grid', 'dots', 'fold'];
+const Undo = window.UndoStack;
 
-const currentNote = () => state.notes.find(n => n.id === state.activeId) || null;
+const currentNote = () => state.notes.find(n => n.id === state.activeId && !n.trashed) || null;
+/* 正常的便笺（不含「最近删除」里的） */
+const liveNotes = () => state.notes.filter(n => !n.trashed);
 
 /* ============ 工具函数 ============ */
 function uid() {
@@ -98,7 +101,7 @@ function isNoteEmpty(note) {
 
 /* 移除空便笺（保留 keepId 对应的那张，且至少留一张） */
 function pruneEmptyNotes(keepId) {
-  const kept = state.notes.filter(n => n.id === keepId || state.stuck.has(n.id) || !isNoteEmpty(n));
+  const kept = state.notes.filter(n => n.trashed || n.id === keepId || state.stuck.has(n.id) || !isNoteEmpty(n));
   if (kept.length && kept.length !== state.notes.length) {
     state.notes = kept;
     return true;
@@ -256,8 +259,12 @@ function applyRemotePatch(p) {
   if (!currentNote()) {
     // 当前便笺在别处被删除了
     if (IS_STICKY) return;
-    if (!state.notes.length) state.notes.push(blankNote());
-    state.activeId = (state.notes.find(n => !state.stuck.has(n.id)) || state.notes[0]).id;
+    const pick = liveNotes().find(n => !state.stuck.has(n.id)) || (() => {
+      const fresh = blankNote();
+      state.notes.unshift(fresh);
+      return fresh;
+    })();
+    state.activeId = pick.id;
     state.settings.activeNoteId = state.activeId;
     loadActiveNote();
     scheduleSave(100);
@@ -301,45 +308,64 @@ function deleteNote() {
   const note = currentNote();
   if (!note) return;
   const wasEmpty = isNoteEmpty(note);
-
   if (!wasEmpty) window.Life.tearOff(el.card); // 像便利贴一样被撕下来
 
-  // 只剩一张（贴在桌面上的不算）时清空而非删除
-  const rest = state.notes.filter(n => n !== note && !state.stuck.has(n.id));
-  if (!rest.length) {
-    const snapshot = { title: note.title, tags: [...(note.tags || [])], content: note.content, color: note.color, paper: note.paper, updatedAt: note.updatedAt };
-    Object.assign(note, { title: '', tags: [], content: '' });
-    loadActiveNote();
-    scheduleSave(100);
-    if (!wasEmpty) {
-      toastAction('已清空', '撤销', () => {
-        Object.assign(note, snapshot);
-        loadActiveNote(false);
-        window.Life.stickIn(el.card);
-        scheduleSave(100);
-      });
-    }
-    return;
+  // 下一张：前面最近的一张，没有就往后找；一张都不剩就新建一张空便笺
+  const live = liveNotes().filter(n => !state.stuck.has(n.id));
+  const idx = live.indexOf(note);
+  let next = live.slice(0, idx).reverse()[0] || live.slice(idx + 1)[0];
+  if (!next) {
+    next = blankNote();
+    state.notes.unshift(next);
   }
 
-  const idx = state.notes.indexOf(note);
-  state.notes.splice(idx, 1);
-  const next = state.notes.slice(0, idx).reverse().find(n => !state.stuck.has(n.id)) || rest[0];
+  if (wasEmpty) {
+    // 空便笺没什么可找回的，直接删掉
+    state.notes.splice(state.notes.indexOf(note), 1);
+    Undo.forget(note.id);
+  } else {
+    note.trashed = Date.now(); // 移到「最近删除」，30 天后才真正删除
+  }
   state.activeId = next.id;
   state.settings.activeNoteId = state.activeId;
   loadActiveNote();
   scheduleSave(100);
   if (!wasEmpty) {
-    toastAction('已删除「' + noteTitle(note) + '」', '撤销', () => {
-      saveCurrentContent();
-      state.notes.splice(Math.min(idx, state.notes.length), 0, note);
-      state.activeId = note.id;
-      state.settings.activeNoteId = note.id;
-      loadActiveNote(false);
-      window.Life.stickIn(el.card); // 贴回来
-      scheduleSave(100);
-    });
+    toastAction('已移到「最近删除」', '撤销', () => restoreNote(note.id));
   }
+}
+
+/* ============ 最近删除 ============ */
+const TRASH_DAYS = 30;
+
+function trashedNotes() {
+  return state.notes.filter(n => n.trashed).sort((a, b) => b.trashed - a.trashed);
+}
+
+/* 从「最近删除」恢复，并切换过去 */
+function restoreNote(id) {
+  const note = state.notes.find(n => n.id === id);
+  if (!note || !note.trashed) return;
+  saveCurrentContent();
+  delete note.trashed;
+  state.activeId = note.id;
+  state.settings.activeNoteId = note.id;
+  loadActiveNote(false);
+  window.Life.stickIn(el.card); // 贴回来
+  scheduleSave(100);
+}
+
+/* 彻底删除（不可恢复） */
+function purgeNotes(ids) {
+  const del = new Set(ids);
+  state.notes = state.notes.filter(n => !del.has(n.id));
+  ids.forEach(id => Undo.forget(id));
+  scheduleSave(100);
+}
+
+function daysLeft(note) {
+  const left = TRASH_DAYS - Math.floor((Date.now() - note.trashed) / 86400000);
+  return Math.max(0, left);
 }
 
 /* ============ 贴到桌面 ============ */
@@ -371,7 +397,7 @@ async function stickNote(id, x, y) {
 
 function onStickiesChanged(ids) {
   const next = new Set(ids);
-  const returned = [...state.stuck].filter(id => !next.has(id) && state.notes.some(n => n.id === id));
+  const returned = [...state.stuck].filter(id => !next.has(id) && liveNotes().some(n => n.id === id));
   state.stuck = next;
   // 从桌面“放回便笺本”的那张，直接在便笺本里打开
   if (!IS_STICKY && returned.length) switchTo(returned[returned.length - 1]);
@@ -419,6 +445,7 @@ function loadActiveNote(animate = true) {
     // 以浏览器序列化后的 HTML 为基准，避免 checked → checked="checked" 之类的差异被当成“编辑”
     syncCheckboxAttrs();
     note.content = el.editor.innerHTML;
+    Undo.setNote(note.id); // 每张便笺各自的撤销记录
   }
   applyTheme(note);
   renderTags();
@@ -537,7 +564,13 @@ const PIN_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 2.4h3
 
 /* 菜单显示顺序：置顶的在前，各组内保持数组顺序 */
 function displayOrder() {
-  return [...state.notes.filter(n => n.pinned), ...state.notes.filter(n => !n.pinned)];
+  const live = liveNotes();
+  return [...live.filter(n => n.pinned), ...live.filter(n => !n.pinned)];
+}
+
+/* 按显示顺序重排数组（「最近删除」里的接在后面，不能丢） */
+function applyDisplayOrder(order = displayOrder()) {
+  state.notes = [...order, ...state.notes.filter(n => n.trashed)];
 }
 
 function noteMatches(note, q) {
@@ -557,7 +590,10 @@ function buildSwitcherMenu() {
   menuSearch.placeholder = '搜索标题、正文、标签';
   menuList = document.createElement('div');
   menuList.className = 'menu-items';
-  el.switcherMenu.append(menuSearch, menuList);
+  menuFooter = document.createElement('button');
+  menuFooter.className = 'menu-footer';
+  menuFooter.addEventListener('click', (e) => { e.stopPropagation(); showTrash(); });
+  el.switcherMenu.append(menuSearch, menuList, menuFooter);
 
   menuSearch.addEventListener('input', () => renderMenuItems());
   menuSearch.addEventListener('keydown', (e) => {
@@ -569,8 +605,86 @@ function buildSwitcherMenu() {
 }
 
 let dragId = null;
+let menuFooter = null;
+
+const TRASH_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2"/></svg>';
+
+/* 菜单底部：「最近删除 · N」，没有删除的便笺时隐藏 */
+function updateMenuFooter() {
+  if (!menuFooter) return;
+  const n = trashedNotes().length;
+  menuFooter.hidden = !n;
+  menuFooter.innerHTML = `${TRASH_SVG}<span>最近删除</span><span class="mf-count">${n}</span>`;
+}
+
+/* 「最近删除」视图：恢复 / 彻底删除 / 清空 */
+function showTrash() {
+  const list = trashedNotes();
+  if (!list.length) { buildSwitcherMenu(); return; }
+  el.switcherMenu.innerHTML = '';
+  menuSearch = null;
+  menuFooter = null;
+
+  const head = document.createElement('div');
+  head.className = 'trash-head';
+  head.innerHTML = '<button class="trash-back" title="返回">‹ 返回</button><span class="trash-title">最近删除</span><button class="trash-clear">清空</button>';
+  const hint = document.createElement('div');
+  hint.className = 'trash-hint';
+  hint.textContent = `删除的便笺会保留 ${TRASH_DAYS} 天，之后自动彻底删除`;
+  menuList = document.createElement('div');
+  menuList.className = 'menu-items';
+  el.switcherMenu.append(head, hint, menuList);
+
+  head.querySelector('.trash-back').addEventListener('click', (e) => {
+    e.stopPropagation();
+    buildSwitcherMenu();
+    menuSearch.focus();
+  });
+  // 清空要点两次，避免手滑
+  const clearBtn = head.querySelector('.trash-clear');
+  let armed = null;
+  clearBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!armed) {
+      clearBtn.textContent = '确认清空？';
+      clearBtn.classList.add('danger');
+      armed = setTimeout(() => { armed = null; clearBtn.textContent = '清空'; clearBtn.classList.remove('danger'); }, 3000);
+      return;
+    }
+    clearTimeout(armed);
+    purgeNotes(trashedNotes().map(n => n.id));
+    buildSwitcherMenu();
+    toast('「最近删除」已清空');
+  });
+
+  list.forEach(n => {
+    const item = document.createElement('div');
+    item.className = 'menu-item trash-item';
+    const left = daysLeft(n);
+    item.innerHTML =
+      `<span class="mi-dot" data-theme="${THEMES.includes(n.color) ? n.color : 'glass'}"></span>` +
+      `<span class="mi-main"><span class="mi-title">${escapeHtml(noteTitle(n))}</span>` +
+      `<span class="mi-sub">${left ? `还剩 ${left} 天` : '即将彻底删除'}</span></span>` +
+      `<button class="mi-text-btn" title="恢复这张便笺">恢复</button>` +
+      `<button class="mi-btn mi-purge" title="彻底删除（不可恢复）" aria-label="彻底删除">${TRASH_SVG}</button>`;
+    item.querySelector('.mi-text-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeMenus();
+      restoreNote(n.id);
+      toast('已恢复「' + noteTitle(n) + '」');
+    });
+    item.querySelector('.mi-purge').addEventListener('click', (e) => {
+      e.stopPropagation();
+      purgeNotes([n.id]);
+      showTrash();
+    });
+    menuList.appendChild(item);
+  });
+}
 
 function renderMenuItems() {
+  if (!menuSearch) return; // 正在看「最近删除」
+  updateMenuFooter();
   const q = (menuSearch ? menuSearch.value : '').trim().toLowerCase();
   menuList.innerHTML = '';
   const list = displayOrder().filter(n => noteMatches(n, q));
@@ -611,7 +725,7 @@ function renderMenuItems() {
     item.querySelector('.mi-pin').addEventListener('click', (e) => {
       e.stopPropagation();
       n.pinned = !n.pinned;
-      state.notes = displayOrder();
+      applyDisplayOrder();
       renderMenuItems();
       scheduleSave(100);
     });
@@ -679,8 +793,8 @@ function moveNote(srcId, targetId, before) {
   order.splice(order.indexOf(src), 1);
   order.splice(order.indexOf(target) + (before ? 0 : 1), 0, src);
   src.pinned = !!target.pinned;
-  state.notes = order;
-  state.notes = displayOrder();
+  applyDisplayOrder(order);
+  applyDisplayOrder();
   renderMenuItems();
   scheduleSave(100);
 }
@@ -858,6 +972,7 @@ function placeAfterCheckbox(marker) {
 
 /* 对选中的每一行（或光标所在行）执行 fn(lines, mkStart, mkEnd)，结束后恢复选区 */
 function withSelectedLines(fn) {
+  Undo.before();
   el.editor.focus();
   const sel = window.getSelection();
   if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) {
@@ -896,6 +1011,7 @@ function withSelectedLines(fn) {
   mkEnd.remove();
   sel.removeAllRanges();
   sel.addRange(r);
+  Undo.record();
   scheduleSave(100);
 }
 
@@ -923,7 +1039,9 @@ function indentLines(delta) {
   const a = sel.rangeCount ? sel.anchorNode : null;
   const host = a && (a.nodeType === 3 ? a.parentElement : a);
   if (host && el.editor.contains(host) && host.closest('li')) {
+    Undo.before();
     document.execCommand(delta > 0 ? 'indent' : 'outdent');
+    Undo.record();
     scheduleSave(100);
     return;
   }
@@ -957,7 +1075,9 @@ el.editor.addEventListener('keydown', (e) => {
     const line = caretLine();
     if (line && line.nodeType === 1 && Number(line.dataset.indent) > 0 && caretAtLineStart(line)) {
       e.preventDefault();
+      Undo.before();
       setIndent(line, Number(line.dataset.indent) - 1);
+      Undo.record();
       scheduleSave(100);
     }
   }
@@ -987,6 +1107,7 @@ el.editor.addEventListener('keydown', (e) => {
   if (!line || !lineCheckbox(line)) return;
   if (!line.textContent.replace(/\u00a0/g, ' ').trim()) {
     e.preventDefault();
+    Undo.before();
     unmakeTodo(line);
     const r = document.createRange();
     r.setStart(line, 0);
@@ -994,6 +1115,7 @@ el.editor.addEventListener('keydown', (e) => {
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(r);
+    Undo.record();
     scheduleSave(100);
   }
 });
@@ -1053,6 +1175,7 @@ function markdownShortcut() {
   }
   // formatBlock 可能留下完全为空的 div（不可见、也放不进光标），顺手清掉
   el.editor.querySelectorAll(':scope > div:empty').forEach(d => d.remove());
+  Undo.record();
   scheduleSave();
 }
 
@@ -1122,7 +1245,9 @@ async function insertImage(dataUrl) {
     const url = await window.api.saveImage(note.id, dataUrl);
     const img = document.createElement('img');
     img.src = url;
+    Undo.before();
     insertImageAtCaret(img);
+    Undo.record();
     scheduleSave(100);
   } catch (e) {
     console.error('insertImage', e);
@@ -1200,10 +1325,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 // 粘贴图片
+/* 粘贴：图片照常插入；网页 / Word 内容清理掉样式，只留结构；Ctrl+Shift+V 只粘贴纯文本 */
+let plainPasteUntil = 0;
+el.editor.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') plainPasteUntil = Date.now() + 800;
+});
+
 el.editor.addEventListener('paste', async (e) => {
-  const items = e.clipboardData && e.clipboardData.items;
-  if (!items) return;
-  for (const item of items) {
+  const cd = e.clipboardData;
+  if (!cd) return;
+  for (const item of cd.items || []) {
     if (item.type && item.type.startsWith('image/')) {
       e.preventDefault();
       const file = item.getAsFile();
@@ -1214,7 +1345,46 @@ el.editor.addEventListener('paste', async (e) => {
       return;
     }
   }
+  e.preventDefault();
+  const plainOnly = Date.now() < plainPasteUntil;
+  plainPasteUntil = 0;
+  const html = plainOnly ? '' : cd.getData('text/html');
+  const text = cd.getData('text/plain');
+  let out = '';
+  if (html) {
+    out = window.Paste.sanitizeHtml(html).html;
+    if (!out.replace(/<[^>]+>/g, '').trim() && text) out = window.Paste.textToHtml(text);
+  } else if (text) {
+    out = window.Paste.textToHtml(text);
+  }
+  if (!out) return;
+  Undo.before();
+  window.Paste.insertHtmlAtCaret(el.editor, out);
+  Undo.record();
+  scheduleSave(100);
 });
+
+/* 链接：打字时网址后敲空格 / 回车自动变成链接；按住 Ctrl 单击用浏览器打开 */
+el.editor.addEventListener('input', (e) => {
+  if (e.inputType === 'insertText' && e.data && /^[\s\u3000]$/.test(e.data)) {
+    if (window.Paste.linkifyBeforeCaret(el.editor, 1)) scheduleSave();
+  }
+});
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) window.Paste.linkifyBeforeCaret(el.editor, 0);
+});
+el.editor.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a');
+  if (!a || !el.editor.contains(a)) return;
+  e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && window.Paste.isSafeUrl(a.getAttribute('href'))) {
+    window.api.openExternal(a.getAttribute('href'));
+  }
+});
+const syncCtrl = (e) => document.body.classList.toggle('ctrl-held', e.ctrlKey || e.metaKey);
+document.addEventListener('keydown', syncCtrl);
+document.addEventListener('keyup', syncCtrl);
+window.addEventListener('blur', () => document.body.classList.remove('ctrl-held'));
 
 // 待办勾选：迸出几颗小圆点；整张便笺的待办全部完成时只给一句提示
 el.editor.addEventListener('change', (e) => {
@@ -1230,6 +1400,7 @@ el.editor.addEventListener('change', (e) => {
   } else {
     countDone(-1);
   }
+  Undo.record();
   updateStatus();
   scheduleSave(100);
 });
@@ -1481,6 +1652,7 @@ function appendCapture(c) {
   const note = currentNote();
   if (!note || !c || !c.text) return;
   saveCurrentContent();
+  Undo.before();
   const body = escapeHtml(c.text).replace(/\n/g, '<br>');
   const src = c.source ? escapeHtml(c.source) : (c.fromClipboard ? '剪贴板' : '');
   const meta = '— ' + (src ? src + ' · ' : '') + formatCaptureTime(c.at || Date.now());
@@ -1493,6 +1665,7 @@ function appendCapture(c) {
     el.editor.insertAdjacentHTML('beforeend', html + '<div><br></div>');
   }
   el.editor.scrollTop = el.editor.scrollHeight;
+  Undo.record();
   persist();
   if (!document.hidden) toast('已捕捉到「' + noteTitle(note) + '」');
 }
@@ -1526,8 +1699,8 @@ async function init() {
   } else {
     if (!state.notes.length) state.notes.push(blankNote());
     const saved = state.settings.activeNoteId;
-    const usable = (id) => id && state.notes.some(n => n.id === id) && !state.stuck.has(id);
-    state.activeId = usable(saved) ? saved : (state.notes.find(n => !state.stuck.has(n.id)) || (() => {
+    const usable = (id) => id && liveNotes().some(n => n.id === id) && !state.stuck.has(id);
+    state.activeId = usable(saved) ? saved : (liveNotes().find(n => !state.stuck.has(n.id)) || (() => {
       const fresh = blankNote();
       state.notes.unshift(fresh);
       return fresh;
@@ -1536,6 +1709,17 @@ async function init() {
     // 启动时清掉历史遗留的空便笺（贴在桌面上的不动）
     pruneEmptyNotes(state.activeId);
   }
+
+  Undo.init({
+    editor: el.editor,
+    serialize: () => { syncCheckboxAttrs(); return el.editor.innerHTML; },
+    onApply: () => {
+      saveCurrentContent();
+      renderSwitcher();
+      updateStatus();
+      scheduleSave(100);
+    }
+  });
 
   applySettings();
   const hk = await window.api.getHotkey();

@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, clipboard, nativeImage, screen, Notification
+  app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, clipboard, nativeImage, screen, Notification, shell, dialog
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -43,19 +43,149 @@ function defaultSettings() {
   };
 }
 
+function normalizeData(d) {
+  d.settings = Object.assign(defaultSettings(), d.settings || {});
+  if (!d.settings.stickies || typeof d.settings.stickies !== 'object') d.settings.stickies = {};
+  d.notes = Array.isArray(d.notes) ? d.notes : [];
+  return d;
+}
+
+let recoveredFrom = null; // 启动时数据文件损坏、从哪份备份恢复的（用于提示）
+let restoring = false;     // 正在从备份恢复：期间忽略窗口发来的增量（重新加载前的旧改动不能混进备份）
+
 function loadData() {
-  try {
-    if (fs.existsSync(dataFile)) {
-      const d = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
-      d.settings = Object.assign(defaultSettings(), d.settings || {});
-      if (!d.settings.stickies || typeof d.settings.stickies !== 'object') d.settings.stickies = {};
-      d.notes = Array.isArray(d.notes) ? d.notes : [];
-      return d;
+  if (fs.existsSync(dataFile)) {
+    try {
+      return normalizeData(JSON.parse(fs.readFileSync(dataFile, 'utf-8')));
+    } catch (e) {
+      console.error('[loadData] data.json 损坏:', e.message);
+      // 损坏的文件改名留档，再从最近的备份恢复；绝不能拿一份空数据把它覆盖掉
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      try { fs.renameSync(dataFile, path.join(userDataDir, `data.corrupt-${stamp}.json`)); } catch (_) { /* ignore */ }
+      for (const b of listBackups()) {
+        try {
+          const d = normalizeData(JSON.parse(fs.readFileSync(b.file, 'utf-8')));
+          recoveredFrom = b.label;
+          saveData(d);
+          return d;
+        } catch (_) { /* 这份也坏了，试下一份 */ }
+      }
     }
-  } catch (e) {
-    console.error('[loadData]', e);
   }
   return { version: 1, notes: [], settings: defaultSettings() };
+}
+
+/* ============ 自动备份：每天一份，保留最近 7 天 ============ */
+const backupDir = path.join(userDataDir, 'backups');
+const KEEP_BACKUPS = 7;
+const BACKUP_RE = /^data-(\d{4})-(\d{2})-(\d{2})\.json$/;
+
+function listBackups() {
+  try {
+    return fs.readdirSync(backupDir)
+      .filter(f => BACKUP_RE.test(f))
+      .sort()
+      .reverse()
+      .map(f => {
+        const [, y, m, d] = BACKUP_RE.exec(f);
+        return { file: path.join(backupDir, f), name: f, label: `${y}年${Number(m)}月${Number(d)}日` };
+      });
+  } catch (_) {
+    return [];
+  }
+}
+
+function dailyBackup() {
+  try {
+    if (!fs.existsSync(dataFile)) return;
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    const d = new Date();
+    const pad = (v) => String(v).padStart(2, '0');
+    const name = `data-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+    const target = path.join(backupDir, name);
+    if (!fs.existsSync(target)) fs.copyFileSync(dataFile, target);
+    listBackups().slice(KEEP_BACKUPS).forEach(b => { try { fs.unlinkSync(b.file); } catch (_) { /* ignore */ } });
+    rebuildTrayMenu();
+  } catch (e) {
+    console.error('[backup]', e.message);
+  }
+}
+
+/* 用某份备份替换当前全部数据（替换前把当前数据另存一份，万一选错还能找回） */
+async function restoreBackup(b) {
+  let backupData;
+  try {
+    backupData = normalizeData(JSON.parse(fs.readFileSync(b.file, 'utf-8')));
+  } catch (e) {
+    dialog.showMessageBox({ type: 'error', message: '这份备份无法读取', detail: e.message });
+    return;
+  }
+  const live = backupData.notes.filter(n => !n.trashed).length;
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['恢复', '取消'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `用 ${b.label} 的备份替换现在的所有便笺？`,
+    detail: `备份里有 ${live} 张便笺。现在的数据会先另存为 backups/before-restore-*.json，选错了还能找回。`
+  });
+  if (response !== 0) return;
+  flushStore();
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.copyFileSync(dataFile, path.join(backupDir, `before-restore-${stamp}.json`));
+  } catch (_) { /* ignore */ }
+  // 窗口位置沿用当前的，其余全部换成备份
+  backupData.settings.bounds = store.settings.bounds;
+  for (const id of Object.keys(store.settings.stickies)) closeSticky(id, false);
+  restoring = true;
+  store = backupData;
+  store.settings.stickies = backupData.settings.stickies || {};
+  flushStore();
+  if (mainCtx && !mainCtx.win.isDestroyed()) {
+    mainCtx.win.webContents.once('did-finish-load', () => { restoring = false; });
+    mainCtx.win.webContents.reload();
+  } else {
+    restoring = false;
+  }
+  restoreStickies();
+  notify('已从备份恢复', `${b.label}，共 ${live} 张便笺`);
+}
+
+/* ============ 清理没有便笺在用的图片（启动后执行，跳过最近 10 分钟内的文件） ============ */
+function cleanupImages() {
+  try {
+    if (!fs.existsSync(imagesDir)) return;
+    const recent = Date.now() - 10 * 60 * 1000;
+    let removed = 0;
+    for (const dir of fs.readdirSync(imagesDir)) {
+      const full = path.join(imagesDir, dir);
+      if (!fs.statSync(full).isDirectory()) continue;
+      const note = store.notes.find(n => n.id === dir); // 「最近删除」里的便笺也算在用
+      const files = fs.readdirSync(full);
+      for (const f of files) {
+        const fp = path.join(full, f);
+        const st = fs.statSync(fp);
+        if (st.mtimeMs > recent) continue;
+        if (!note || !String(note.content || '').includes(f)) {
+          fs.unlinkSync(fp);
+          removed++;
+        }
+      }
+      if (!fs.readdirSync(full).length) fs.rmdirSync(full);
+    }
+    if (removed) console.log('[cleanupImages] removed', removed);
+  } catch (e) {
+    console.error('[cleanupImages]', e.message);
+  }
+}
+
+/* 「最近删除」里超过 30 天的便笺彻底删除 */
+const TRASH_MS = 30 * 24 * 3600 * 1000;
+function purgeOldTrash() {
+  const before = store.notes.length;
+  store.notes = store.notes.filter(n => !n.trashed || Date.now() - n.trashed < TRASH_MS);
+  if (store.notes.length !== before) scheduleStoreSave();
 }
 
 function saveData(data) {
@@ -93,6 +223,7 @@ function applyPatch(patch) {
     if (!n) { n = { id: u.id }; store.notes.push(n); }
     Object.assign(n, u.set || {});
     (u.unset || []).forEach(k => { delete n[k]; });
+    if (n.trashed) closeSticky(n.id, false);
   }
   if (patch.deletes && patch.deletes.length) {
     const del = new Set(patch.deletes);
@@ -201,6 +332,9 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
 
   win.setAlwaysOnTop(!!onTop, 'floating');
   win.setIgnoreMouseEvents(true, { forward: true });
+  // 便笺里的链接只能经 Ctrl+单击 交给系统浏览器打开；窗口本身不允许跳转或弹出新窗口
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.loadFile(INDEX_HTML, isSticky ? { query: { mode: 'sticky', note: noteId } } : {});
   win.once('ready-to-show', () => {
     if (isSticky) win.showInactive();
@@ -643,6 +777,14 @@ function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'icon-32.png'));
   tray = new Tray(icon);
   tray.setToolTip('FloatNote 便签');
+  rebuildTrayMenu();
+  tray.on('click', () => toggleWindow());
+  tray.on('double-click', () => showWindow());
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+  const backups = listBackups();
   const menu = Menu.buildFromTemplate([
     { label: hotkeyInfo.ok ? '快捷键 ' + prettyHotkey(hotkeyInfo.acc) : '快捷键注册失败', enabled: false },
     { label: captureInfo.ok ? '快速捕捉 ' + prettyHotkey(captureInfo.acc) : '快速捕捉快捷键注册失败', enabled: false },
@@ -651,21 +793,34 @@ function createTray() {
     { label: '新建便签', click: () => { showWindow(); mainCtx.win.webContents.send('cmd:new-note'); } },
     { label: '找回窗口（移到屏幕中央）', click: () => recenterWindow() },
     { type: 'separator' },
+    {
+      label: '从备份恢复',
+      submenu: backups.length
+        ? backups.map(b => ({ label: b.label, click: () => restoreBackup(b) }))
+        : [{ label: '还没有备份（每天首次启动时自动备份）', enabled: false }]
+    },
+    { label: '打开数据文件夹', click: () => shell.openPath(userDataDir) },
+    { type: 'separator' },
     { label: '退出 FloatNote', click: () => { isQuitting = true; app.quit(); } }
   ]);
   tray.setContextMenu(menu);
-  tray.on('click', () => toggleWindow());
-  tray.on('double-click', () => showWindow());
 }
 
 /* ============ IPC ============ */
 function registerIpc() {
   ipcMain.handle('data:load', () => store);
   ipcMain.handle('data:patch', (e, patch) => {
+    if (restoring) return false;
     applyPatch(patch);
     scheduleStoreSave();
     broadcast('data:patched', patch, e.sender.id);
     return true;
+  });
+
+  ipcMain.handle('shell:openExternal', (e, url) => {
+    // 只放行网页和邮件链接，避免便笺内容里混进 file: / 自定义协议被执行
+    if (typeof url === 'string' && /^(https?:|mailto:)/i.test(url)) return shell.openExternal(url);
+    return false;
   });
 
   ipcMain.handle('win:context', (e) => {
@@ -799,12 +954,17 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     store = loadData();
+    purgeOldTrash();
     registerIpc();
     createMainWindow();
     restoreStickies();
     registerHotkey(store.settings.hotkey || HOTKEY_CANDIDATES[0]);
     registerCaptureHotkey(store.settings.captureHotkey || CAPTURE_CANDIDATES[0]);
     createTray();
+    dailyBackup();
+    setInterval(dailyBackup, 3 * 3600 * 1000); // 跨天不关机也会备份
+    setTimeout(cleanupImages, 15000);
+    if (recoveredFrom) notify('数据文件损坏，已自动恢复', `已从 ${recoveredFrom} 的备份恢复。损坏的文件已改名保留在数据文件夹中。`);
   });
 
   // 退出前兜底保存窗口位置与数据

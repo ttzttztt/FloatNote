@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
 
   saveImage: (noteId, dataUrl) => ipcRenderer.invoke('image:save', { noteId, dataUrl }),
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   // 窗口
   setAlwaysOnTop: (v) => ipcRenderer.invoke('win:setAlwaysOnTop', v),
