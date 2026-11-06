@@ -5,48 +5,24 @@
 (function () {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---------- 完成待办的小奖励 ---------- */
-  const PAW = '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="15.5" rx="5.6" ry="4.6"/><ellipse cx="5.6" cy="9.4" rx="2.3" ry="2.8"/><ellipse cx="10" cy="5.6" rx="2.3" ry="2.8"/><ellipse cx="14.6" cy="5.6" rx="2.3" ry="2.8"/><ellipse cx="18.6" cy="9.4" rx="2.3" ry="2.8"/></svg>';
-
-  /* 勾选时从复选框处迸出几个小爪印 */
-  function burst(x, y) {
+  /* ---------- 完成待办的小奖励 ----------
+     勾选时从复选框处迸出几颗小圆点；big = 整张便笺全部完成，圆点更多、散得更开 */
+  function burst(x, y, big = false) {
     if (reduceMotion) return;
-    const n = 7;
+    const n = big ? 16 : 7;
     for (let i = 0; i < n; i++) {
       const p = document.createElement('span');
       p.className = 'spark';
       const ang = (Math.PI * 2 * i) / n + Math.random() * 0.5;
-      const dist = 22 + Math.random() * 16;
+      const dist = (big ? 34 : 20) + Math.random() * (big ? 30 : 14);
       p.style.left = x + 'px';
       p.style.top = y + 'px';
       p.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
       p.style.setProperty('--dy', Math.sin(ang) * dist - 8 + 'px');
-      p.style.setProperty('--rot', (Math.random() * 80 - 40) + 'deg');
-      p.style.setProperty('--s', (0.55 + Math.random() * 0.45).toFixed(2));
-      p.innerHTML = i % 2 ? PAW : '';
-      if (!(i % 2)) p.classList.add('dot');
+      p.style.setProperty('--s', (0.5 + Math.random() * 0.6).toFixed(2));
+      if (i % 3 === 1) p.classList.add('ring'); // 夹几颗空心圆，层次更轻盈
       document.body.appendChild(p);
-      setTimeout(() => p.remove(), 800);
-    }
-  }
-
-  /* 一张便笺的待办全部完成：一串小爪印从左下角走过卡片底部 */
-  function pawTrail(card) {
-    if (reduceMotion || !card) return;
-    const r = card.getBoundingClientRect();
-    const steps = 7;
-    for (let i = 0; i < steps; i++) {
-      const p = document.createElement('span');
-      p.className = 'trail-paw';
-      p.innerHTML = PAW;
-      const x = r.left + 60 + (i * (r.width - 140)) / (steps - 1);
-      const y = r.bottom - 30 - (i % 2 ? 0 : 9);
-      p.style.left = x + 'px';
-      p.style.top = y + 'px';
-      p.style.setProperty('--rot', (i % 2 ? 80 : 100) + 'deg');
-      p.style.animationDelay = (i * 110) + 'ms';
-      document.body.appendChild(p);
-      setTimeout(() => p.remove(), 1900 + i * 110);
+      setTimeout(() => p.remove(), 900);
     }
   }
 
@@ -75,5 +51,5 @@
     setTimeout(() => card.classList.remove('stick-in'), 700);
   }
 
-  window.Life = { burst, pawTrail, tearOff, stickIn, PAW };
+  window.Life = { burst, tearOff, stickIn };
 })();
