@@ -20,14 +20,16 @@ let isQuitting = false;
 let hideHintShown = false; // 是否已提示过“隐藏后如何唤回”
 
 /* ============ 数据：主进程持有唯一一份，渲染进程只发增量 ============ */
-// 自动化测试用独立的临时目录，不碰真实便笺（Windows / macOS / Linux 通用）
-if (process.env.FLOATNOTE_USER_DATA) app.setPath('userData', process.env.FLOATNOTE_USER_DATA);
+// 数据目录固定为 <appData>/floatnote：打包后的应用默认会用产品名 FloatNote 命名目录，
+// 在 macOS / Linux 上与开发时的 floatnote 是两个目录，装上正式版后便笺会“不见”。
+// 自动化测试用 FLOATNOTE_USER_DATA 指向独立的临时目录，不碰真实便笺。
+app.setPath('userData', process.env.FLOATNOTE_USER_DATA || path.join(app.getPath('appData'), 'floatnote'));
 const userDataDir = app.getPath('userData');
 const dataFile = path.join(userDataDir, 'data.json');
 const imagesDir = path.join(userDataDir, 'images');
 
 // 由主进程维护、渲染进程不会改写的设置项
-const MAIN_OWNED_SETTINGS = ['bounds', 'stickies', 'dock'];
+const MAIN_OWNED_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey'];
 
 function ensureDirs() {
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
@@ -340,7 +342,7 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
   win.loadFile(INDEX_HTML, isSticky ? { query: { mode: 'sticky', note: noteId } } : {});
   win.once('ready-to-show', () => {
     if (isSticky) win.showInactive();
-    else if (!store.settings.startHidden) win.showInactive();
+    else win.showInactive();
     if (!isSticky && store.settings.dock) {
       // 上次是贴边收起状态：恢复
       if (tryDock(ctx)) collapse(ctx);
@@ -654,6 +656,90 @@ function registerHotkey(preferred) {
   return hotkeyInfo;
 }
 
+/* 设置里改快捷键：只尝试这一个组合，失败（被占用 / 与另一个重复 / 写法不对）就保留原来的 */
+function setHotkey(which, acc) {
+  const isToggle = which === 'toggle';
+  const cur = isToggle ? hotkeyInfo : captureInfo;
+  const other = isToggle ? captureInfo : hotkeyInfo;
+  const handler = isToggle ? () => toggleWindow() : () => { quickCapture(); };
+  const target = acc || (isToggle ? HOTKEY_CANDIDATES[0] : CAPTURE_CANDIDATES[0]); // 空 = 恢复默认
+  if (target === cur.acc && cur.ok) return { ok: true, info: cur };
+  if (other.ok && other.acc === target) return { ok: false, reason: 'duplicate', info: cur };
+  if (cur.ok) { try { globalShortcut.unregister(cur.acc); } catch (_) { /* ignore */ } }
+  let ok = false;
+  try { ok = globalShortcut.register(target, handler); } catch (_) { ok = false; }
+  if (!ok) {
+    if (cur.ok) { try { globalShortcut.register(cur.acc, handler); } catch (_) { /* ignore */ } }
+    return { ok: false, reason: 'occupied', info: cur };
+  }
+  const info = { acc: target, ok: true };
+  if (isToggle) { hotkeyInfo = info; store.settings.hotkey = target; }
+  else { captureInfo = info; store.settings.captureHotkey = target; }
+  scheduleStoreSave();
+  rebuildTrayMenu();
+  broadcast('hotkey:changed', Object.assign({}, hotkeyInfo, { capture: captureInfo }));
+  return { ok: true, info };
+}
+
+/* 录制新快捷键期间暂停全局快捷键，否则按到现有组合会直接触发（比如把窗口隐藏掉） */
+let hotkeysSuspended = false;
+function suspendHotkeys(on) {
+  if (on === hotkeysSuspended) return;
+  hotkeysSuspended = on;
+  if (on) {
+    globalShortcut.unregisterAll();
+  } else {
+    const re = (info, handler) => { if (info.ok) { try { globalShortcut.register(info.acc, handler); } catch (_) { /* ignore */ } } };
+    re(hotkeyInfo, () => toggleWindow());
+    re(captureInfo, () => { quickCapture(); });
+  }
+}
+
+/* ============ 开机自启动 ============
+   Windows / macOS 用系统登录项；Linux 在 ~/.config/autostart 写 .desktop 文件。
+   开发模式（未打包）下要把项目路径作为参数一起登记，否则开机启动的是一个空的 Electron。 */
+function loginItemOptions() {
+  const args = app.isPackaged ? [] : [path.resolve(app.getAppPath())];
+  return { path: process.execPath, args };
+}
+
+function linuxAutostartFile() {
+  const dir = process.env.FLOATNOTE_AUTOSTART_DIR ||
+    path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart');
+  return path.join(dir, 'floatnote.desktop');
+}
+
+function getAutoLaunch() {
+  try {
+    if (process.platform === 'linux') return fs.existsSync(linuxAutostartFile());
+    return app.getLoginItemSettings(loginItemOptions()).openAtLogin;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setAutoLaunch(on) {
+  try {
+    if (process.platform === 'linux') {
+      const file = linuxAutostartFile();
+      if (on) {
+        const exe = process.env.APPIMAGE || process.execPath; // AppImage 要登记 AppImage 本身
+        const q = (v) => '"' + String(v).replace(/(["\\`$])/g, '\\$1') + '"';
+        const exec = [exe, ...loginItemOptions().args].map(q).join(' ');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, ['[Desktop Entry]', 'Type=Application', 'Name=FloatNote', 'Comment=桌面便签', `Exec=${exec}`, 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
+      } else if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+      }
+    } else {
+      app.setLoginItemSettings(Object.assign({ openAtLogin: !!on }, loginItemOptions()));
+    }
+  } catch (e) {
+    console.error('[autoLaunch]', e.message);
+  }
+  return getAutoLaunch();
+}
+
 function registerCaptureHotkey(preferred) {
   captureInfo = registerWithFallback(preferred, CAPTURE_CANDIDATES, () => { quickCapture(); }, captureInfo);
   return captureInfo;
@@ -926,6 +1012,10 @@ function registerIpc() {
   });
   ipcMain.handle('win:registerHotkey', (e, acc) => registerHotkey(acc));
   ipcMain.handle('win:getHotkey', () => Object.assign({}, hotkeyInfo, { capture: captureInfo }));
+  ipcMain.handle('hotkey:set', (e, { which, acc }) => setHotkey(which, acc));
+  ipcMain.handle('hotkey:suspend', (e, on) => suspendHotkeys(!!on));
+  ipcMain.handle('app:getAutoLaunch', () => getAutoLaunch());
+  ipcMain.handle('app:setAutoLaunch', (e, on) => setAutoLaunch(!!on));
   ipcMain.handle('win:quit', () => { isQuitting = true; app.quit(); });
 
   ipcMain.handle('dock:expand', (e) => { const c = ctxOf(e); if (c) expand(c); });
@@ -988,6 +1078,9 @@ if (!gotLock) {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
   });
+
+  // 失去焦点（比如录制快捷键时切走了）也要恢复全局快捷键
+  app.on('browser-window-blur', () => suspendHotkeys(false));
 
   app.on('window-all-closed', () => {
     // 保持常驻（由托盘退出）

@@ -108,9 +108,11 @@
     <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
     <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
     <label class="pm-row main-only"><span>拖到屏幕边缘时贴边收起</span><input type="checkbox" id="sm-dock" checked></label>
+    <label class="pm-row main-only"><span>开机自动启动</span><input type="checkbox" id="sm-autolaunch"></label>
     <div class="pm-sep"></div>
-    <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
-    <div class="pm-row"><span>快速捕捉</span><span class="pm-hint" id="sm-capture-hint"></span></div>
+    <div class="pm-row"><span>唤起 / 隐藏</span><button class="hotkey-btn" id="sm-hotkey-hint" data-which="toggle" title="点击后按下新的组合键"></button></div>
+    <div class="pm-row"><span>快速捕捉</span><button class="hotkey-btn" id="sm-capture-hint" data-which="capture" title="点击后按下新的组合键"></button></div>
+    <div class="pm-hotkey-tip" id="sm-hotkey-tip" hidden></div>
     <div class="pm-row"><span>缩进 / 取消缩进</span><span class="pm-hint">Tab / Shift + Tab</span></div>
     <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
     <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>

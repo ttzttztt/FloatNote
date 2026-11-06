@@ -47,8 +47,7 @@ async function init() {
 
   applySettings();
   const hk = await window.api.getHotkey();
-  el.smHotkeyHint.textContent = formatHotkey(hk);
-  el.smCaptureHint.textContent = formatHotkey(hk && hk.capture);
+  showHotkeys(hk);
 
   loadActiveNote();
   scheduleSave(100);
@@ -57,6 +56,7 @@ async function init() {
   window.api.onStickies(onStickiesChanged);
   window.api.onDockState(onDockState);
   if (ctx && ctx.dock) onDockState(ctx.dock);
+  window.api.onHotkeyChanged(showHotkeys);
   if (!IS_STICKY) {
     window.api.onNewNote(() => newNote());
     window.api.onCapture(appendCapture);

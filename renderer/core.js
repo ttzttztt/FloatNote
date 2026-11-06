@@ -29,6 +29,8 @@ const el = {
   smAppearance: document.getElementById('sm-appearance'),
   smDock: document.getElementById('sm-dock'),
   smCaptureHint: document.getElementById('sm-capture-hint'),
+  smHotkeyTip: document.getElementById('sm-hotkey-tip'),
+  smAutoLaunch: document.getElementById('sm-autolaunch'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),
   noteTitleEl: document.getElementById('note-title'),

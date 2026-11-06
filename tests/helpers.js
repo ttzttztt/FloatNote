@@ -40,9 +40,14 @@ async function launchApp({ seed, dir, env = {} } = {}) {
     p.on('pageerror', e => errors.push(e.message));
     p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   };
-  app.on('window', watch);
-  const page = await app.firstWindow();
-  watch(page);
+  const watched = new Set();
+  const watchOnce = (p) => { if (!watched.has(p)) { watched.add(p); watch(p); } };
+  app.on('window', watchOnce);
+  // 重启场景下桌面便笺窗口可能先出现，这里明确拿便笺本（主窗口）
+  const isMain = (p) => !p.url().includes('mode=sticky');
+  let page = await app.firstWindow();
+  while (!isMain(page)) page = app.windows().find(isMain) || await app.waitForEvent('window', { timeout: 15000 });
+  app.windows().forEach(watchOnce);
   await page.waitForFunction(() => typeof state !== 'undefined' && !!state.activeId);
   await sleep(300);
   return {

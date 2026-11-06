@@ -935,3 +935,22 @@ body.ctrl-held .editor a { cursor: pointer; text-decoration-color: currentColor;
 }
 .mi-text-btn:hover { background: var(--accent-soft); border-color: transparent; }
 .trash-item .mi-purge:hover { color: var(--danger); }
+
+/* ============ 设置：快捷键录制 ============ */
+.hotkey-btn {
+  border: 1px solid var(--border);
+  background: var(--field);
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 150px;
+  text-align: right;
+}
+.hotkey-btn:hover { border-color: var(--accent); }
+.hotkey-btn.recording { border-color: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pm-hotkey-tip { font-size: 11px; color: var(--muted); text-align: right; margin: -2px 0 4px; }
+.pm-hotkey-tip.error { color: var(--danger); }
+.pm-hotkey-tip[hidden] { display: none; }

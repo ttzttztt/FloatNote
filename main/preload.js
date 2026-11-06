@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('api', {
   setIgnoreMouse: (ignore) => ipcRenderer.invoke('win:setIgnoreMouse', ignore),
   registerHotkey: (acc) => ipcRenderer.invoke('win:registerHotkey', acc),
   getHotkey: () => ipcRenderer.invoke('win:getHotkey'),
+  setHotkey: (which, acc) => ipcRenderer.invoke('hotkey:set', { which, acc }),
+  suspendHotkeys: (on) => ipcRenderer.invoke('hotkey:suspend', on),
+  onHotkeyChanged: on('hotkey:changed'),
+  getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
+  setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', on),
   quit: () => ipcRenderer.invoke('win:quit'),
   onNewNote: on('cmd:new-note'),
 

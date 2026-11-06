@@ -6,7 +6,7 @@
 /* ============ 持久化：只把变化的字段发给主进程 ============
    多个窗口（便笺本 + 贴在桌面的便笺）共享同一份数据。每个窗口记住“上次同步时的样子”，
    保存时按字段比较，只发送改动；收到其他窗口的改动后合并进来。这样两个窗口不会互相覆盖。 */
-const LOCAL_SETTINGS = new Set(['bounds', 'stickies', 'dock']); // 主进程维护的设置项
+const LOCAL_SETTINGS = new Set(['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey']); // 主进程维护的设置项
 let baseline = { notes: new Map(), order: '', settings: {} };
 
 function snapshot(obj, skip) {

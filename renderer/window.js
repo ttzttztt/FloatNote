@@ -136,6 +136,105 @@ el.smAlwaysOnTop.addEventListener('change', async () => {
   scheduleSave(100);
 });
 
+/* ============ 开机自动启动 ============ */
+el.smAutoLaunch.addEventListener('change', async () => {
+  el.smAutoLaunch.checked = await window.api.setAutoLaunch(el.smAutoLaunch.checked);
+});
+// 状态以系统为准（用户可能在系统设置里关掉了），每次打开设置面板时刷新
+el.btnSettings.addEventListener('click', async () => {
+  if (!IS_STICKY) el.smAutoLaunch.checked = await window.api.getAutoLaunch();
+});
+
+/* ============ 自定义快捷键：点按钮后按下新的组合键 ============ */
+let hotkeyState = null;
+
+function showHotkeys(info) {
+  hotkeyState = info;
+  el.smHotkeyHint.textContent = formatHotkey(info);
+  el.smCaptureHint.textContent = formatHotkey(info && info.capture);
+}
+
+/* KeyboardEvent.code → Electron 快捷键里的按键名 */
+const CODE_KEYS = {
+  Space: 'Space', Tab: 'Tab', Enter: 'Return', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert',
+  Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+  Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']',
+  Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`'
+};
+
+function accelFromEvent(e) {
+  let key = null;
+  if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3);
+  else if (/^Digit\d$/.test(e.code)) key = e.code.slice(5);
+  else if (/^F\d{1,2}$/.test(e.code)) key = e.code;
+  else if (/^Numpad\d$/.test(e.code)) key = 'num' + e.code.slice(6);
+  else key = CODE_KEYS[e.code] || null;
+  if (!key) return null; // 只按了修饰键，继续等
+  const mods = [];
+  if (e.ctrlKey) mods.push('CommandOrControl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  // 全局快捷键至少要有 Ctrl / Alt / Win 之一（F1–F24 例外），否则会抢走正常打字
+  const strong = e.ctrlKey || e.altKey || e.metaKey;
+  if (!strong && !/^F\d+$/.test(key)) return '';
+  return [...mods, key].join('+');
+}
+
+function hotkeyTip(text, isError) {
+  el.smHotkeyTip.hidden = !text;
+  el.smHotkeyTip.textContent = text || '';
+  el.smHotkeyTip.classList.toggle('error', !!isError);
+}
+
+function startRecordHotkey(btn) {
+  if (document.querySelector('.hotkey-btn.recording')) return;
+  const which = btn.dataset.which;
+  btn.classList.add('recording');
+  btn.textContent = '请按下组合键…';
+  hotkeyTip('Esc 取消 · Backspace 恢复默认');
+  window.api.suspendHotkeys(true);
+
+  const finish = async (acc) => {
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('mousedown', onAway, true);
+    btn.classList.remove('recording');
+    let msg = '';
+    let err = false;
+    if (acc !== undefined) {
+      const r = await window.api.setHotkey(which, acc);
+      if (!r.ok) {
+        err = true;
+        msg = r.reason === 'duplicate' ? '和另一个快捷键重复了，换一个吧' : '这个组合被其他软件占用了，换一个吧';
+      } else {
+        msg = acc ? '已保存' : '已恢复默认';
+      }
+    }
+    await window.api.suspendHotkeys(false);
+    showHotkeys(await window.api.getHotkey());
+    hotkeyTip(msg, err);
+    if (msg && !err) setTimeout(() => { if (el.smHotkeyTip.textContent === msg) hotkeyTip(''); }, 1800);
+  };
+  const onKey = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // 不让 Esc 关掉设置面板、不让快捷键触发编辑操作
+    if (e.key === 'Escape') { finish(undefined); return; }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.metaKey) { finish(''); return; }
+    const acc = accelFromEvent(e);
+    if (acc === null) return;
+    if (acc === '') { hotkeyTip('至少要带 Ctrl / Alt / Win 之一', true); return; }
+    finish(acc);
+  };
+  const onAway = (e) => { if (e.target !== btn) finish(undefined); };
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('mousedown', onAway, true);
+}
+
+document.querySelectorAll('.hotkey-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => { e.stopPropagation(); startRecordHotkey(btn); });
+});
+
 /* ============ 自定义拖动（工具栏） ============ */
 let dragState = null;
 let dragging = false;
