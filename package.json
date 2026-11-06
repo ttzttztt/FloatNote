@@ -83,5 +83,10 @@
       "icon": "assets/icon-256.png",
       "artifactName": "FloatNote-${version}-${arch}.${ext}"
     }
+  },
+  "pnpm": {
+    "overrides": {
+      "@electron/node-gyp": "10.2.0-electron.1"
+    }
   }
 }
