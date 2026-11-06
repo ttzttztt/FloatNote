@@ -5,31 +5,12 @@
  * 1. 清除 ELECTRON_RUN_AS_NODE 后以桌面应用模式启动 Electron。
  *    某些终端/Agent 环境会设置 ELECTRON_RUN_AS_NODE=1，导致 Electron 以纯 Node 模式运行，
  *    require('electron') 返回路径字符串而非 API。这里显式清除该变量。
- * 2. Electron 45 起不在安装时下载程序，而是首次 require('electron') 时才下载。
- *    pnpm 运行脚本时不一定会把 .npmrc 里的 electron_mirror 传下去，
- *    这里主动读取 .npmrc 中的 electron_* 配置并写入环境变量（已显式设置的不覆盖）。
+ * 2. 首次运行时 Electron 程序从 .npmrc 指定的镜像下载（见 electron-env.js）。
  */
 const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const { applyElectronEnvFromNpmrc } = require('./electron-env');
 
-function applyElectronMirrorFromNpmrc() {
-  const npmrc = path.join(__dirname, '..', '.npmrc');
-  if (!fs.existsSync(npmrc)) return;
-  for (const raw of fs.readFileSync(npmrc, 'utf-8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#') || line.startsWith(';')) continue;
-    const m = /^electron_([a-z_]+)\s*=\s*(.*)$/i.exec(line);
-    if (!m) continue;
-    const name = m[1].toLowerCase();
-    const value = m[2].trim().replace(/^["']|["']$/g, '');
-    const envKey = 'ELECTRON_' + name.toUpperCase();
-    if (process.env[envKey] || process.env['npm_config_electron_' + name]) continue;
-    process.env[envKey] = value;
-  }
-}
-
-applyElectronMirrorFromNpmrc();
+applyElectronEnvFromNpmrc();
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 let electron;

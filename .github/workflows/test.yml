@@ -1,0 +1,27 @@
+name: 测试
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    name: 端到端测试（真实 Electron + 虚拟显示器）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # CI 在海外，直接用 GitHub 官方下载源，不用 .npmrc 里的国内镜像
+      npm_config_electron_mirror: https://github.com/electron/electron/releases/download/
+      npm_config_electron_custom_dir: v{{ version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 安装虚拟显示器与按键模拟
+        run: sudo apt-get update && sudo apt-get install -y xvfb xdotool
+      - name: 运行测试
+        run: xvfb-run -a --server-args="-screen 0 1600x900x24" pnpm test
