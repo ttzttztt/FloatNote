@@ -46,6 +46,7 @@
 | 显示 / 隐藏便笺 | `Ctrl+Alt+Space`（被占用时回退 `Ctrl+Shift+Space`、`Ctrl+Alt+F9`） |
 | 重命名便笺 | 双击标题 / `F2` |
 | 快速捕捉选中文字 | `Ctrl+Alt+C`（被占用时回退 `Ctrl+Shift+Alt+C`、`Ctrl+Alt+F10`） |
+| 缩进 / 取消缩进 | `Tab` / `Shift+Tab`（缩进行开头按 `Backspace` 也会取消一级缩进） |
 | 转为待办 / 还原 | `Ctrl+Shift+T` |
 | 添加标签 | `Ctrl+Shift+L` |
 | 粘贴剪贴板图片 | `Ctrl+V` / `Ctrl+Shift+I` |

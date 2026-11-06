@@ -595,7 +595,12 @@ function renderMenuItems() {
       `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? '取消置顶' : '置顶此便笺'}" aria-label="置顶">${PIN_SVG}</button>` +
       `<button class="mi-btn mi-rename" title="重命名" aria-label="重命名">${PENCIL_SVG}</button>`;
 
-    const go = () => { closeMenus(); switchTo(n.id); };
+    const go = () => {
+      closeMenus();
+      if (stuck) { window.api.focusSticky(n.id); return; }
+      switchTo(n.id);
+      focusEditorEnd(); // 切过去就能直接写，不用再点一下
+    };
     item.addEventListener('click', go);
     item.addEventListener('keydown', (e) => {
       if (e.target !== item) return;
@@ -851,8 +856,8 @@ function placeAfterCheckbox(marker) {
   }
 }
 
-/* Ctrl+Shift+T：把选中的每一行（或光标所在行）转成待办；已全是待办则还原为普通文字 */
-function toggleTodo() {
+/* 对选中的每一行（或光标所在行）执行 fn(lines, mkStart, mkEnd)，结束后恢复选区 */
+function withSelectedLines(fn) {
   el.editor.focus();
   const sel = window.getSelection();
   if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) {
@@ -882,9 +887,7 @@ function toggleTodo() {
     if (n === last) break;
   }
 
-  const allTodo = lines.every(l => lineCheckbox(l));
-  lines.forEach(l => (allTodo ? unmakeTodo(l) : makeTodo(l)));
-  if (!allTodo) { placeAfterCheckbox(mkStart); placeAfterCheckbox(mkEnd); }
+  fn(lines, mkStart, mkEnd);
 
   const r = document.createRange();
   r.setStartAfter(mkStart);
@@ -894,6 +897,81 @@ function toggleTodo() {
   sel.removeAllRanges();
   sel.addRange(r);
   scheduleSave(100);
+}
+
+/* Ctrl+Shift+T：把选中的每一行（或光标所在行）转成待办；已全是待办则还原为普通文字 */
+function toggleTodo() {
+  withSelectedLines((lines, mkStart, mkEnd) => {
+    const allTodo = lines.every(l => lineCheckbox(l));
+    lines.forEach(l => (allTodo ? unmakeTodo(l) : makeTodo(l)));
+    if (!allTodo) { placeAfterCheckbox(mkStart); placeAfterCheckbox(mkEnd); }
+  });
+}
+
+/* ---- 缩进：Tab / Shift+Tab ----
+   普通行和待办行用 data-indent 记录缩进级数（随内容保存）；列表项交给浏览器嵌套成子列表。 */
+const MAX_INDENT = 6;
+
+function setIndent(line, level) {
+  const n = Math.min(MAX_INDENT, Math.max(0, level));
+  if (n) line.dataset.indent = String(n);
+  else delete line.dataset.indent;
+}
+
+function indentLines(delta) {
+  const sel = window.getSelection();
+  const a = sel.rangeCount ? sel.anchorNode : null;
+  const host = a && (a.nodeType === 3 ? a.parentElement : a);
+  if (host && el.editor.contains(host) && host.closest('li')) {
+    document.execCommand(delta > 0 ? 'indent' : 'outdent');
+    scheduleSave(100);
+    return;
+  }
+  withSelectedLines((lines) => {
+    lines.forEach(l => {
+      if (l.nodeType !== 1 || /^(UL|OL)$/.test(l.tagName)) return;
+      setIndent(l, (Number(l.dataset.indent) || 0) + delta);
+    });
+  });
+}
+
+/* 光标是否在一行的最开头（忽略待办的复选框和其后的空格） */
+function caretAtLineStart(line) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const r = document.createRange();
+  r.setStart(line, 0);
+  r.setEnd(sel.anchorNode, sel.anchorOffset);
+  return !r.toString().replace(/[\u00a0\s]/g, '');
+}
+
+el.editor.addEventListener('keydown', (e) => {
+  if (e.isComposing) return;
+  if (e.key === 'Tab') {
+    e.preventDefault(); // 否则焦点会跳出编辑区
+    indentLines(e.shiftKey ? -1 : 1);
+    return;
+  }
+  // 缩进行的开头按退格：先取消一级缩进，而不是删掉上一行的字
+  if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey) {
+    const line = caretLine();
+    if (line && line.nodeType === 1 && Number(line.dataset.indent) > 0 && caretAtLineStart(line)) {
+      e.preventDefault();
+      setIndent(line, Number(line.dataset.indent) - 1);
+      scheduleSave(100);
+    }
+  }
+});
+
+/* 光标放到正文末尾 */
+function focusEditorEnd() {
+  el.editor.focus();
+  const r = document.createRange();
+  r.selectNodeContents(el.editor);
+  r.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
 }
 
 /* 回车：待办行内回车自动延续为新待办；空待办上回车则退出待办 */
@@ -1368,6 +1446,14 @@ function formatHotkey(info) {
     .replace('Command', 'Cmd');
   return info.ok ? acc : acc + '（注册失败，可能被占用）';
 }
+
+/* ============ 窗口是否激活：激活时卡片有一圈淡淡的主题色描边 ============ */
+function syncWindowFocus() {
+  document.body.classList.toggle('window-focused', document.hasFocus());
+}
+window.addEventListener('focus', syncWindowFocus);
+window.addEventListener('blur', syncWindowFocus);
+syncWindowFocus();
 
 /* ============ 贴边收起 ============ */
 function onDockState(st) {

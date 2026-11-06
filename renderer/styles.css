@@ -381,6 +381,23 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   color: var(--placeholder);
   pointer-events: none;
 }
+/* 点进空便笺后：提示变成“开始输入…”并更淡，光标用主题色，一眼看出已经可以打字 */
+.editor:focus:empty::before { content: '开始输入…'; opacity: .55; }
+.editor { caret-color: var(--accent); }
+
+/* 缩进：普通行 / 待办行按级数左移；子列表沿用浏览器的嵌套缩进 */
+.editor [data-indent="1"] { margin-left: 1.6em; }
+.editor [data-indent="2"] { margin-left: 3.2em; }
+.editor [data-indent="3"] { margin-left: 4.8em; }
+.editor [data-indent="4"] { margin-left: 6.4em; }
+.editor [data-indent="5"] { margin-left: 8em; }
+.editor [data-indent="6"] { margin-left: 9.6em; }
+.editor ul ul, .editor ol ol, .editor ul ol, .editor ol ul { margin: 0; }
+
+/* 窗口激活时卡片边缘一圈淡淡的主题色，多张便笺同时在桌面上时也能看出正在操作哪一张 */
+.card { outline: 1.5px solid transparent; outline-offset: -1.5px; transition: background .4s, outline-color .2s; }
+body.window-focused .card { outline-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+body.collapsed .card { outline-color: transparent; }
 .editor img {
   max-width: 100%;
   border-radius: 8px;
@@ -388,7 +405,7 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   margin: 6px 0;
   display: block;
 }
-.editor .todo { display: flex; align-items: flex-start; gap: 5px; margin: 3px 0; }
+.editor .todo { display: flex; align-items: flex-start; gap: 5px; margin-block: 3px; } /* 只设上下，左边距留给缩进 */
 /* 自绘复选框：圆角方块 + 主题色勾选，替代系统默认灰框 */
 .editor .todo input[type="checkbox"] {
   -webkit-appearance: none;
