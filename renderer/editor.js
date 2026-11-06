@@ -1,0 +1,510 @@
+'use strict';
+
+/* editor.js —— 编辑器：待办、缩进、Markdown 快捷输入、图片、粘贴、链接、快捷键
+   各脚本是同一页面里的普通 <script>，顶层声明互相可见；按 index.html 中的顺序加载。 */
+
+/* ============ 编辑器操作 ============ */
+/* ---- 待办：按“行”切换 ----
+   编辑器里一行 = editor 的一个顶层块元素。Chromium 的 contenteditable 会把第一行
+   留成裸文本、后续行包成 <div>，也可能出现 <br> 换行，所以先统一成“每行一个 div”。 */
+const BLOCK_TAGS = new Set(['DIV', 'P', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'PRE']);
+
+function normalizeLines() {
+  const nodes = [...el.editor.childNodes];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const div = document.createElement('div');
+    el.editor.insertBefore(div, run[0]);
+    run.forEach(n => div.appendChild(n));
+    run = [];
+  };
+  for (const n of nodes) {
+    if (n.nodeType === 1 && BLOCK_TAGS.has(n.tagName)) { flush(); continue; }
+    run.push(n);
+    if (n.nodeName === 'BR') flush();
+  }
+  flush();
+}
+
+/* 找到节点所在的顶层行 */
+function lineOf(node) {
+  while (node && node.parentNode !== el.editor) node = node.parentNode;
+  return node && node.parentNode === el.editor ? node : null;
+}
+
+const lineCheckbox = (line) =>
+  (line && line.nodeType === 1 && [...line.children].find(c => c.matches('input[type="checkbox"]'))) || null;
+
+function makeTodo(line) {
+  line.classList.add('todo');
+  if (lineCheckbox(line)) return;
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  line.insertBefore(document.createTextNode('\u00a0'), line.firstChild);
+  line.insertBefore(cb, line.firstChild);
+}
+
+function unmakeTodo(line) {
+  const cb = lineCheckbox(line);
+  if (cb) {
+    const next = cb.nextSibling;
+    if (next && next.nodeType === 3) {
+      next.data = next.data.replace(/^\u00a0/, '');
+      if (!next.data) next.remove();
+    }
+    cb.remove();
+  }
+  line.classList.remove('todo');
+  if (!line.className) line.removeAttribute('class');
+  if (!line.firstChild) line.appendChild(document.createElement('br'));
+}
+
+/* 光标若落在复选框前面，挪到复选框后的空格之后 */
+function placeAfterCheckbox(marker) {
+  const prev = marker.previousSibling;
+  if (prev && prev.matches && prev.matches('input[type="checkbox"]')) {
+    const sp = marker.nextSibling;
+    if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) {
+      sp.splitText(1);
+      sp.after(marker);
+    }
+  }
+}
+
+/* 对选中的每一行（或光标所在行）执行 fn(lines, mkStart, mkEnd)，结束后恢复选区 */
+function withSelectedLines(fn) {
+  Undo.before();
+  el.editor.focus();
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) {
+    const range = document.createRange();
+    range.selectNodeContents(el.editor);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  const range = sel.getRangeAt(0);
+
+  // 用标记节点记住选区，规整 DOM 时它们会跟着文字移动
+  const mkStart = document.createElement('span');
+  const mkEnd = document.createElement('span');
+  const endRange = range.cloneRange();
+  endRange.collapse(false);
+  endRange.insertNode(mkEnd);
+  range.collapse(true);
+  range.insertNode(mkStart);
+
+  normalizeLines();
+  const first = lineOf(mkStart);
+  const last = lineOf(mkEnd);
+  const lines = [];
+  for (let n = first; n; n = n.nextSibling) {
+    if (n.nodeType === 1) lines.push(n);
+    if (n === last) break;
+  }
+
+  fn(lines, mkStart, mkEnd);
+
+  const r = document.createRange();
+  r.setStartAfter(mkStart);
+  r.setEndBefore(mkEnd);
+  mkStart.remove();
+  mkEnd.remove();
+  sel.removeAllRanges();
+  sel.addRange(r);
+  Undo.record();
+  scheduleSave(100);
+}
+
+/* Ctrl+Shift+T：把选中的每一行（或光标所在行）转成待办；已全是待办则还原为普通文字 */
+function toggleTodo() {
+  withSelectedLines((lines, mkStart, mkEnd) => {
+    const allTodo = lines.every(l => lineCheckbox(l));
+    lines.forEach(l => (allTodo ? unmakeTodo(l) : makeTodo(l)));
+    if (!allTodo) { placeAfterCheckbox(mkStart); placeAfterCheckbox(mkEnd); }
+  });
+}
+
+/* ---- 缩进：Tab / Shift+Tab ----
+   普通行和待办行用 data-indent 记录缩进级数（随内容保存）；列表项交给浏览器嵌套成子列表。 */
+const MAX_INDENT = 6;
+
+function setIndent(line, level) {
+  const n = Math.min(MAX_INDENT, Math.max(0, level));
+  if (n) line.dataset.indent = String(n);
+  else delete line.dataset.indent;
+}
+
+function indentLines(delta) {
+  const sel = window.getSelection();
+  const a = sel.rangeCount ? sel.anchorNode : null;
+  const host = a && (a.nodeType === 3 ? a.parentElement : a);
+  if (host && el.editor.contains(host) && host.closest('li')) {
+    Undo.before();
+    document.execCommand(delta > 0 ? 'indent' : 'outdent');
+    Undo.record();
+    scheduleSave(100);
+    return;
+  }
+  withSelectedLines((lines) => {
+    lines.forEach(l => {
+      if (l.nodeType !== 1 || /^(UL|OL)$/.test(l.tagName)) return;
+      setIndent(l, (Number(l.dataset.indent) || 0) + delta);
+    });
+  });
+}
+
+/* 光标是否在一行的最开头（忽略待办的复选框和其后的空格） */
+function caretAtLineStart(line) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const r = document.createRange();
+  r.setStart(line, 0);
+  r.setEnd(sel.anchorNode, sel.anchorOffset);
+  return !r.toString().replace(/[\u00a0\s]/g, '');
+}
+
+el.editor.addEventListener('keydown', (e) => {
+  if (e.isComposing) return;
+  if (e.key === 'Tab') {
+    e.preventDefault(); // 否则焦点会跳出编辑区
+    indentLines(e.shiftKey ? -1 : 1);
+    return;
+  }
+  // 缩进行的开头按退格：先取消一级缩进，而不是删掉上一行的字
+  if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey) {
+    const line = caretLine();
+    if (line && line.nodeType === 1 && Number(line.dataset.indent) > 0 && caretAtLineStart(line)) {
+      e.preventDefault();
+      Undo.before();
+      setIndent(line, Number(line.dataset.indent) - 1);
+      Undo.record();
+      scheduleSave(100);
+    }
+  }
+});
+
+/* 光标放到正文末尾 */
+function focusEditorEnd() {
+  el.editor.focus();
+  const r = document.createRange();
+  r.selectNodeContents(el.editor);
+  r.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+/* 回车：待办行内回车自动延续为新待办；空待办上回车则退出待办 */
+function caretLine() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) return null;
+  return lineOf(sel.anchorNode);
+}
+
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  const line = caretLine();
+  if (!line || !lineCheckbox(line)) return;
+  if (!line.textContent.replace(/\u00a0/g, ' ').trim()) {
+    e.preventDefault();
+    Undo.before();
+    unmakeTodo(line);
+    const r = document.createRange();
+    r.setStart(line, 0);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    Undo.record();
+    scheduleSave(100);
+  }
+});
+
+/* Markdown 式快捷输入：行首输入标记再敲空格即转换
+   [] / 【】 → 待办，[x] → 已勾选待办，- / * → 无序列表，1. → 有序列表，# → 标题，## → 小标题 */
+const MD_PATTERN = /^(\[\s?\]|【\s?】|\[[xX]\]|【[xX]】|[-*•－]|1[.．。]|#{1,2}|＃{1,2})[\s\u00a0\u3000]$/;
+
+function markdownShortcut() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return;
+  const node = sel.anchorNode;
+  const off = sel.anchorOffset;
+  if (!el.editor.contains(node) || node === el.editor) return;
+  const host = node.nodeType === 3 ? node.parentElement : node;
+  if (host.closest('li, h2, h3, pre')) return;
+  // 行 = 光标最近的块元素（Chromium 可能把行嵌套在 div 里）；顶层裸文本则取顶层节点
+  const block = host.closest('div, p');
+  const line = block && block !== el.editor && el.editor.contains(block) ? block : lineOf(node);
+  if (!line || lineCheckbox(line)) return;
+
+  const r = document.createRange();
+  r.setStart(line, 0);
+  r.setEnd(node, off);
+  const m = MD_PATTERN.exec(r.toString());
+  if (!m) return;
+  r.deleteContents();
+  // 删掉标记后若整行变空，补一个 <br> 占位，否则光标进不去，列表/标题会套到上一行
+  let target = line;
+  if (line.nodeType === 3 && !line.data) {
+    target = document.createElement('div');
+    line.replaceWith(target);
+  }
+  if (target.nodeType === 1 && !target.textContent && !target.querySelector('img,input,br')) {
+    target.appendChild(document.createElement('br'));
+  }
+  if (target !== line || !target.textContent) r.setStart(target, 0);
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+
+  const tok = m[1];
+  if (/^[\[【]/.test(tok)) {
+    toggleTodo();
+    if (/[xX]/.test(tok)) {
+      const cb = lineCheckbox(caretLine());
+      if (cb) { cb.checked = true; cb.setAttribute('checked', 'checked'); }
+    }
+  } else if (/^[-*•－]$/.test(tok)) {
+    document.execCommand('insertUnorderedList');
+    unwrapList();
+  } else if (/^1/.test(tok)) {
+    document.execCommand('insertOrderedList');
+    unwrapList();
+  } else {
+    document.execCommand('formatBlock', false, tok.length === 1 ? 'h2' : 'h3');
+  }
+  // formatBlock 可能留下完全为空的 div（不可见、也放不进光标），顺手清掉
+  el.editor.querySelectorAll(':scope > div:empty').forEach(d => d.remove());
+  Undo.record();
+  scheduleSave();
+}
+
+/* execCommand 会把列表包进原来那行的 <div>，退出列表后的新行也跟着嵌套进去；
+   这里把只包着列表的外层 div 拆掉（用标记节点保住光标） */
+function unwrapList() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const a = sel.anchorNode;
+  const list = (a.nodeType === 3 ? a.parentElement : a).closest('ul, ol');
+  const wrap = list && list.parentElement;
+  if (!wrap || wrap === el.editor || wrap.tagName !== 'DIV' || wrap.children.length !== 1) return;
+  const mk = document.createElement('span');
+  sel.getRangeAt(0).insertNode(mk);
+  wrap.replaceWith(list);
+  const r = document.createRange();
+  r.setStartAfter(mk);
+  r.collapse(true);
+  mk.remove();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+el.editor.addEventListener('input', (e) => {
+  if (e.inputType === 'insertText' && e.data && /^[\s\u3000]$/.test(e.data)) markdownShortcut();
+});
+
+el.editor.addEventListener('input', (e) => {
+  if (e.inputType !== 'insertParagraph') return;
+  const line = caretLine();
+  if (!line || line.nodeType !== 1 || lineCheckbox(line) || !line.classList.contains('todo')) return;
+  const a = window.getSelection().anchorNode;
+  if ((a.nodeType === 3 ? a.parentElement : a).closest('li, h2, h3')) return;
+  // 新行继承了 todo 但没有复选框：补上，并把光标放到复选框后
+  makeTodo(line);
+  const sp = lineCheckbox(line).nextSibling;
+  const r = document.createRange();
+  r.setStart(sp, 1);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+});
+
+function insertImageAtCaret(img) {
+  const sel = window.getSelection();
+  if (sel.rangeCount) {
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    const br = document.createElement('br');
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } else {
+    el.editor.appendChild(img);
+  }
+  el.editor.focus();
+}
+
+async function insertImage(dataUrl) {
+  const note = currentNote();
+  if (!note) return;
+  try {
+    const url = await window.api.saveImage(note.id, dataUrl);
+    const img = document.createElement('img');
+    img.src = url;
+    Undo.before();
+    insertImageAtCaret(img);
+    Undo.record();
+    scheduleSave(100);
+  } catch (e) {
+    console.error('insertImage', e);
+  }
+}
+
+async function pasteClipboardImage() {
+  const dataUrl = await window.api.readClipboardImage();
+  if (dataUrl) await insertImage(dataUrl);
+  else toast('剪贴板中没有图片');
+}
+
+/* ============ 事件绑定 ============ */
+el.btnNew.addEventListener('click', newNote);
+el.switcher.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (e.detail > 1) return; // 双击的第二下交给 dblclick（重命名）
+  if (IS_STICKY) return; // 桌面便笺只有一张，没有切换菜单
+  if (el.switcherMenu.classList.contains('hidden')) {
+    closeMenus();
+    saveCurrentContent();
+    buildSwitcherMenu();
+    openMenu(el.switcherMenu, el.switcher, 'left');
+    el.switcher.setAttribute('aria-expanded', 'true');
+    menuSearch.focus();
+  } else {
+    closeMenus();
+  }
+});
+
+// 双击标题重命名
+el.switcher.addEventListener('dblclick', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  startRename();
+});
+
+// 删除：立即生效，提示条里可撤销
+el.btnDelete.addEventListener('click', () => {
+  closeMenus();
+  deleteNote();
+});
+
+/* 在标签栏打开输入框（快捷键 Ctrl+Shift+L 触发） */
+function openTagInput() {
+  if (el.tagBar.querySelector('.tag-input')) {
+    el.tagBar.querySelector('.tag-input').focus();
+    return;
+  }
+  const input = document.createElement('input');
+  input.className = 'tag-input';
+  input.placeholder = '标签名，回车确认';
+  el.tagBar.appendChild(input);
+  input.focus();
+  const commit = () => {
+    const v = input.value.trim();
+    if (v) addTag(v);
+    input.remove();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); input.remove(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+/* 全局编辑快捷键：待办 / 标签 / 粘贴图片 */
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod || !e.shiftKey) return;
+  const key = e.key.toLowerCase();
+  if (key === 't') { e.preventDefault(); toggleTodo(); }
+  else if (key === 'l') { e.preventDefault(); openTagInput(); }
+  else if (key === 'i') { e.preventDefault(); pasteClipboardImage(); }
+});
+
+// 粘贴图片
+/* 粘贴：图片照常插入；网页 / Word 内容清理掉样式，只留结构；Ctrl+Shift+V 只粘贴纯文本 */
+let plainPasteUntil = 0;
+el.editor.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') plainPasteUntil = Date.now() + 800;
+});
+
+el.editor.addEventListener('paste', async (e) => {
+  const cd = e.clipboardData;
+  if (!cd) return;
+  for (const item of cd.items || []) {
+    if (item.type && item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) {
+        const dataUrl = await blobToDataURL(file);
+        await insertImage(dataUrl);
+      }
+      return;
+    }
+  }
+  e.preventDefault();
+  const plainOnly = Date.now() < plainPasteUntil;
+  plainPasteUntil = 0;
+  const html = plainOnly ? '' : cd.getData('text/html');
+  const text = cd.getData('text/plain');
+  let out = '';
+  if (html) {
+    out = window.Paste.sanitizeHtml(html).html;
+    if (!out.replace(/<[^>]+>/g, '').trim() && text) out = window.Paste.textToHtml(text);
+  } else if (text) {
+    out = window.Paste.textToHtml(text);
+  }
+  if (!out) return;
+  Undo.before();
+  window.Paste.insertHtmlAtCaret(el.editor, out);
+  Undo.record();
+  scheduleSave(100);
+});
+
+/* 链接：打字时网址后敲空格 / 回车自动变成链接；按住 Ctrl 单击用浏览器打开 */
+el.editor.addEventListener('input', (e) => {
+  if (e.inputType === 'insertText' && e.data && /^[\s\u3000]$/.test(e.data)) {
+    if (window.Paste.linkifyBeforeCaret(el.editor, 1)) scheduleSave();
+  }
+});
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) window.Paste.linkifyBeforeCaret(el.editor, 0);
+});
+el.editor.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a');
+  if (!a || !el.editor.contains(a)) return;
+  e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && window.Paste.isSafeUrl(a.getAttribute('href'))) {
+    window.api.openExternal(a.getAttribute('href'));
+  }
+});
+const syncCtrl = (e) => document.body.classList.toggle('ctrl-held', e.ctrlKey || e.metaKey);
+document.addEventListener('keydown', syncCtrl);
+document.addEventListener('keyup', syncCtrl);
+window.addEventListener('blur', () => document.body.classList.remove('ctrl-held'));
+
+// 待办勾选：迸出几颗小圆点；整张便笺的待办全部完成时只给一句提示
+el.editor.addEventListener('change', (e) => {
+  const cb = e.target;
+  if (!cb || !cb.matches('input[type=checkbox]')) return;
+  if (cb.checked) {
+    countDone(1);
+    const r = cb.getBoundingClientRect();
+    const boxes = [...el.editor.querySelectorAll('input[type="checkbox"]')];
+    const allDone = boxes.length >= 2 && boxes.every(b => b.checked);
+    if (allDone) toast('全部完成，休息一下吧');
+    else window.Life.burst(r.left + r.width / 2, r.top + r.height / 2);
+  } else {
+    countDone(-1);
+  }
+  Undo.record();
+  updateStatus();
+  scheduleSave(100);
+});
+el.editor.addEventListener('input', () => scheduleSave());
+

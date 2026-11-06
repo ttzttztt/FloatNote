@@ -102,9 +102,17 @@ renderer/history.js 撤销 / 重做（按便笺的快照栈）
 renderer/paste.js  粘贴清理、纯文本粘贴、链接识别
 renderer/index.html 便笺结构
 renderer/styles.css 便笺外观与动效
-renderer/app.js    编辑器、标签、待办、图片、设置、拖拽/缩放
+renderer/core.js   全局状态、DOM 引用、工具函数（最先加载）
+renderer/sync.js   多窗口数据同步（按字段发送 / 合并增量）
+renderer/notes.js  新建 / 删除 / 切换、最近删除、贴到桌面
+renderer/appearance.js 主题、纸张、外观跟随、字号、状态栏
+renderer/menu.js   切换菜单、重命名、标签、提示条
+renderer/editor.js 待办、缩进、Markdown、图片、粘贴、链接、快捷键
+renderer/window.js 窗口按钮、设置面板、拖动 / 缩放、贴边收起、快速捕捉
+renderer/app.js    启动流程
 renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
 scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
+tests/             端到端测试（Playwright 驱动真实 Electron）
 assets/icon-*.png  应用与托盘图标
 ```
 
