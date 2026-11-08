@@ -1,0 +1,44 @@
+name: 打包
+
+# 手动触发（Actions 页面点 Run workflow），或推送 v1.0.0 这样的版本标签时触发
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: 打包 ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            files: |
+              release/*.exe
+          - os: ubuntu-latest
+            name: Linux
+            files: |
+              release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      # CI 在海外，直接用 GitHub 官方下载源
+      npm_config_electron_mirror: https://github.com/electron/electron/releases/download/
+      npm_config_electron_custom_dir: v{{ version }}
+      npm_config_electron_builder_binaries_mirror: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FloatNote-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

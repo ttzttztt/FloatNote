@@ -14,3 +14,6 @@ Thumbs.db
 # 本地调试与智能体工作目录
 .probe/
 .workbuddy/
+
+# 打包产物
+release/

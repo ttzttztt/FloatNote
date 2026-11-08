@@ -9,7 +9,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- 便笺主体（四周留出透明边距用于投影） -->
+  <!-- 便笺主体（四周留出透明边距用于投影）。外层负责阴影与缩放手柄，
+       这样“折角”纸张裁掉卡片一角时阴影和手柄不会被一起裁掉 -->
+  <div class="card-wrap" id="card-wrap">
   <div id="card" class="card">
     <header class="toolbar" id="toolbar">
       <div class="toolbar-left">
@@ -24,6 +26,9 @@
           </svg>
           <span class="pill-label" id="note-title">空便笺</span>
           <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
+        </button>
+        <button class="tbtn" id="btn-stick" title="贴到桌面（也可以把菜单里的便笺拖出窗口）" aria-label="贴到桌面">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.2h7.4l2.6 2.6v7H3z"/><path d="M10.4 3.2v2.6H13"/><path d="M6 9.4l2-2 2 2M8 7.4v4"/></svg>
         </button>
         <button class="tbtn" id="btn-delete" title="删除当前便笺（可撤销）" aria-label="删除当前便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
@@ -53,29 +58,15 @@
 
     <div class="status-bar" id="status-bar" aria-live="off"></div>
 
-    <div class="paw-deco" aria-hidden="true">
-      <svg viewBox="0 0 96 72" aria-hidden="true">
-        <g transform="translate(2 26) rotate(-12)">
-          <ellipse cx="10" cy="13" rx="8.6" ry="7.4"/>
-          <ellipse cx="4.4" cy="3.4" rx="3.6" ry="4"/>
-          <ellipse cx="12.2" cy="0.8" rx="3.6" ry="4"/>
-          <ellipse cx="19.6" cy="4.6" rx="3.4" ry="3.8"/>
-        </g>
-        <g transform="translate(22 44) rotate(-6)" opacity=".72">
-          <ellipse cx="6" cy="9" rx="5.6" ry="4.8"/>
-          <ellipse cx="2.4" cy="2.6" rx="2.4" ry="2.7"/>
-          <ellipse cx="8.2" cy="0.8" rx="2.4" ry="2.7"/>
-          <ellipse cx="13.2" cy="3.4" rx="2.2" ry="2.5"/>
-        </g>
-        <g transform="translate(34 22) rotate(8)" opacity=".5">
-          <ellipse cx="4" cy="6.4" rx="4" ry="3.4"/>
-          <ellipse cx="1.6" cy="1.8" rx="1.7" ry="1.9"/>
-          <ellipse cx="5.8" cy="0.6" rx="1.7" ry="1.9"/>
-        </g>
-      </svg>
-    </div>
 
-    <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
+    <!-- 贴边收起后显示的细边 -->
+    <div class="dock-tab" id="dock-tab" title="展开便笺">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.6h9.2v7.6l-3 3H3.4z"/><path d="M12.6 10.2h-3v3"/><path d="M5.6 5.6h4.8M5.6 8h3"/></svg>
+      <span class="dock-title" id="dock-title"></span>
+    </div>
+  </div>
+  <div class="fold-flap" aria-hidden="true"></div>
+  <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
   </div>
 
   <!-- 便笺切换浮层（替代原生 select，原生下拉列表无法自定义样式） -->
@@ -90,7 +81,24 @@
         <button class="swatch" data-theme="yellow" title="暖黄便利贴"></button>
         <button class="swatch" data-theme="mint" title="薄荷绿"></button>
         <button class="swatch" data-theme="pink" title="樱花粉"></button>
+        <button class="swatch" data-theme="kraft" title="牛皮纸"></button>
         <button class="swatch" data-theme="dark" title="深色"></button>
+      </span>
+    </div>
+    <div class="pm-row"><span>纸张</span>
+      <span class="seg" id="sm-paper">
+        <button data-paper="plain" title="素纸">素</button>
+        <button data-paper="lines" title="横线本">横线</button>
+        <button data-paper="grid" title="方格本">方格</button>
+        <button data-paper="dots" title="点阵本">点阵</button>
+        <button data-paper="fold" title="便利贴折角">折角</button>
+      </span>
+    </div>
+    <div class="pm-row"><span>外观</span>
+      <span class="seg" id="sm-appearance">
+        <button data-mode="manual" title="始终使用便笺自己的颜色">手动</button>
+        <button data-mode="system" title="系统切到深色模式时，便笺也变暗">跟随系统</button>
+        <button data-mode="time" title="早上 6–10 点偏暖，晚上 10 点到早上 6 点自动变暗">跟随时间</button>
       </span>
     </div>
     <div class="pm-row"><span>字号</span>
@@ -99,16 +107,35 @@
     <label class="pm-row"><span>背景透明度</span><input type="range" id="sm-opacity" min="0.2" max="1" step="0.01"></label>
     <label class="pm-row"><span>窗口置顶</span><input type="checkbox" id="sm-always-on-top" checked></label>
     <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
+    <label class="pm-row main-only"><span>拖到屏幕边缘时贴边收起</span><input type="checkbox" id="sm-dock" checked></label>
+    <label class="pm-row main-only"><span>开机自动启动</span><input type="checkbox" id="sm-autolaunch"></label>
     <div class="pm-sep"></div>
-    <div class="pm-row"><span>唤起 / 隐藏</span><span class="pm-hint" id="sm-hotkey-hint"></span></div>
+    <div class="pm-row"><span>唤起 / 隐藏</span><button class="hotkey-btn" id="sm-hotkey-hint" data-which="toggle" title="点击后按下新的组合键"></button></div>
+    <div class="pm-row"><span>快速捕捉</span><button class="hotkey-btn" id="sm-capture-hint" data-which="capture" title="点击后按下新的组合键"></button></div>
+    <div class="pm-hotkey-tip" id="sm-hotkey-tip" hidden></div>
+    <div class="pm-row"><span>缩进 / 取消缩进</span><span class="pm-hint">Tab / Shift + Tab</span></div>
     <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
     <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
     <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
     <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
+    <div class="pm-row"><span>撤销 / 重做</span><span class="pm-hint">Ctrl + Z / Ctrl + Y</span></div>
+    <div class="pm-row"><span>粘贴纯文本</span><span class="pm-hint">Ctrl + Shift + V</span></div>
+    <div class="pm-row"><span>打开链接</span><span class="pm-hint">Ctrl + 单击</span></div>
     <div class="pm-row"><span>粘贴图片</span><span class="pm-hint">Ctrl + V</span></div>
     <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标 / 唤起快捷键</span></div>
   </div>
 
+  <script src="life.js"></script>
+  <script src="history.js"></script>
+  <script src="paste.js"></script>
+  <!-- 顺序有意义：事件监听器的注册顺序与拆分前一致 -->
+  <script src="core.js"></script>
+  <script src="sync.js"></script>
+  <script src="notes.js"></script>
+  <script src="appearance.js"></script>
+  <script src="menu.js"></script>
+  <script src="editor.js"></script>
+  <script src="window.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

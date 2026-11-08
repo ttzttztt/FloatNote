@@ -5,11 +5,88 @@
   "main": "main/main.js",
   "scripts": {
     "start": "node scripts/start.js",
-    "dev": "node scripts/start.js"
+    "dev": "node scripts/start.js",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
+    "dist": "node scripts/dist.js",
+    "dist:win": "node scripts/dist.js --win",
+    "dist:mac": "node scripts/dist.js --mac",
+    "dist:linux": "node scripts/dist.js --linux"
   },
   "author": "tian",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.2.2"
+    "electron": "^45.2.2",
+    "electron-builder": "26.0.12",
+    "playwright-core": "1.65.0"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "build": {
+    "appId": "com.floatnote.app",
+    "productName": "FloatNote",
+    "copyright": "Copyright © 2026 tian",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main/**",
+      "renderer/**",
+      "assets/**",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon-256.png",
+      "artifactName": "FloatNote-${version}-${arch}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FloatNote",
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "FloatNote-${version}-portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon-256.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "icon": "assets/icon-256.png",
+      "artifactName": "FloatNote-${version}-${arch}.${ext}"
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "@electron/node-gyp": "10.2.0-electron.1"
+    }
   }
 }
