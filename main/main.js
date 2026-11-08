@@ -341,9 +341,8 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.loadFile(INDEX_HTML, isSticky ? { query: { mode: 'sticky', note: noteId } } : {});
   win.once('ready-to-show', () => {
-    if (isSticky) win.showInactive();
-    else win.showInactive();
-    if (!isSticky && store.settings.dock) {
+    win.showInactive();
+    if (getDockRecord(ctx)) {
       // 上次是贴边收起状态：恢复
       if (tryDock(ctx)) collapse(ctx);
     }
@@ -460,9 +459,46 @@ function restoreStickies() {
   }
 }
 
-/* ============ 贴边收起（仅主窗口） ============ */
+/* ============ 贴边收起（便笺本和桌面便笺都可以） ============ */
 const STRIP = 26;     // 收起后细边的厚度
 const STRIP_LEN = 112; // 收起后细边的长度
+const STRIP_GAP = 6;   // 同一条边上多条细边之间的间距
+
+/* 贴边状态存在哪：便笺本在 settings.dock，桌面便笺在各自的 stickies[id].dock */
+function getDockRecord(ctx) {
+  if (ctx.kind === 'main') return store.settings.dock || null;
+  const rec = store.settings.stickies[ctx.noteId];
+  return (rec && rec.dock) || null;
+}
+function setDockRecord(ctx, edge) {
+  if (ctx.kind === 'main') {
+    store.settings.dock = edge;
+    store.settings.bounds = fullBounds(ctx);
+  } else {
+    const rec = store.settings.stickies[ctx.noteId];
+    if (rec) { rec.dock = edge || undefined; Object.assign(rec, fullBounds(ctx)); }
+  }
+  scheduleStoreSave();
+}
+
+/* 用户自己设的置顶（便笺本看设置，桌面便笺各自记） */
+function userOnTop(ctx) {
+  if (ctx.kind === 'main') return !!store.settings.alwaysOnTop;
+  const rec = store.settings.stickies[ctx.noteId];
+  return !rec || rec.onTop !== false;
+}
+
+/* 贴边期间强制用更高的置顶层级：收起的细边要一直露在屏幕边上，被浏览器等窗口盖住就没法碰到了；
+   取消贴边后恢复用户自己的置顶设置 */
+function applyOnTop(ctx) {
+  if (ctx.win.isDestroyed()) return;
+  if (ctx.dock) {
+    ctx.win.setAlwaysOnTop(true, 'screen-saver');
+    ctx.win.moveTop();
+  } else {
+    ctx.win.setAlwaysOnTop(userOnTop(ctx), 'floating');
+  }
+}
 
 function hasDisplayBeyond(x, y) {
   return screen.getAllDisplays().some(d => {
@@ -477,7 +513,7 @@ function workAreaOf(ctx) {
 
 /* 拖动结束时调用：卡片贴到屏幕左/右/上边缘则进入贴边状态，否则退出 */
 function tryDock(ctx) {
-  if (ctx.kind !== 'main' || store.settings.dockEnabled === false) return false;
+  if (store.settings.dockEnabled === false) return false;
   const { x, y } = ctx.pos;
   const { width: w, height: h } = ctx.size;
   const wa = workAreaOf(ctx);
@@ -503,9 +539,8 @@ function tryDock(ctx) {
 
   ctx.dock = { edge };
   ctx.collapsed = false;
-  store.settings.dock = edge;
-  store.settings.bounds = fullBounds(ctx);
-  scheduleStoreSave();
+  setDockRecord(ctx, edge);
+  applyOnTop(ctx);
   sendDockState(ctx);
   startDockWatch(ctx);
   return true;
@@ -515,20 +550,40 @@ function undock(ctx) {
   if (ctx.collapsed) expand(ctx);
   ctx.dock = null;
   stopDockWatch(ctx);
-  store.settings.dock = null;
-  scheduleStoreSave();
+  setDockRecord(ctx, null);
+  applyOnTop(ctx);
   sendDockState(ctx);
 }
 
 function stripBounds(ctx) {
   const wa = workAreaOf(ctx);
   const f = fullBounds(ctx);
-  const clampY = (v) => Math.min(Math.max(v, wa.y), wa.y + wa.height - STRIP_LEN);
-  const clampX = (v) => Math.min(Math.max(v, wa.x), wa.x + wa.width - STRIP_LEN - 40);
-  switch (ctx.dock.edge) {
-    case 'left': return { x: wa.x, y: clampY(f.y + GUTTER + 28), width: STRIP, height: STRIP_LEN };
-    case 'right': return { x: wa.x + wa.width - STRIP, y: clampY(f.y + GUTTER + 28), width: STRIP, height: STRIP_LEN };
-    default: return { x: clampX(f.x + GUTTER + 36), y: wa.y, width: STRIP_LEN + 40, height: STRIP };
+  const edge = ctx.dock.edge;
+  const vertical = edge !== 'top';
+  const len = vertical ? STRIP_LEN : STRIP_LEN + 40;
+  const lo = vertical ? wa.y : wa.x;
+  const hi = (vertical ? wa.y + wa.height : wa.x + wa.width) - len;
+  const clamp = (v) => Math.min(Math.max(v, lo), hi);
+  let start = clamp(vertical ? f.y + GUTTER + 28 : f.x + GUTTER + 36);
+
+  // 同一条边上已经收起的其他细边：避开它们，依次往后排，不叠在一起
+  const taken = allWindows()
+    .filter(c => c !== ctx && c.collapsed && c.dock && c.dock.edge === edge && workAreaOf(c).x === wa.x && workAreaOf(c).y === wa.y)
+    .map(c => { const b = c.win.getBounds(); return vertical ? [b.y, b.y + b.height] : [b.x, b.x + b.width]; })
+    .sort((a, b) => a[0] - b[0]);
+  const overlaps = (s) => taken.find(([a, b]) => s < b + STRIP_GAP && s + len + STRIP_GAP > a);
+  for (let i = 0; i < taken.length + 1; i++) {
+    const hit = overlaps(start);
+    if (!hit) break;
+    start = hit[1] + STRIP_GAP;
+    if (start > hi) { start = clamp(lo); } // 排到底了就从头找空位
+  }
+  start = clamp(start);
+
+  switch (edge) {
+    case 'left': return { x: wa.x, y: start, width: STRIP, height: len };
+    case 'right': return { x: wa.x + wa.width - STRIP, y: start, width: STRIP, height: len };
+    default: return { x: start, y: wa.y, width: len, height: STRIP };
   }
 }
 
@@ -539,6 +594,7 @@ function collapse(ctx) {
   ctx.win.setIgnoreMouseEvents(false);
   ctx.win.setMinimumSize(1, 1); // 否则会被窗口最小尺寸撑大，收不成细边
   setCtxBounds(ctx, stripBounds(ctx));
+  applyOnTop(ctx);
 }
 
 function expand(ctx) {
@@ -566,7 +622,9 @@ function startDockWatch(ctx) {
     const inset = ctx.collapsed ? 0 : GUTTER;
     const inside = p.x >= b.x + inset && p.x < b.x + b.width - inset && p.y >= b.y + inset && p.y < b.y + b.height - inset;
     if (ctx.collapsed) {
-      if (inside) expand(ctx);
+      if (inside) { expand(ctx); applyOnTop(ctx); return; }
+      // 别的置顶窗口（如全屏浏览器）被激活后可能压在细边上面，隔一会儿把细边提回最上层
+      if (Date.now() - (ctx.lastRaise || 0) > 1500) { ctx.lastRaise = Date.now(); ctx.win.moveTop(); }
       return;
     }
     if (inside || ctx.menuOpen) { ctx.outSince = 0; return; }
@@ -960,11 +1018,14 @@ function registerIpc() {
   ipcMain.handle('win:setAlwaysOnTop', (e, v) => {
     const ctx = ctxOf(e);
     if (!ctx) return false;
-    ctx.win.setAlwaysOnTop(!!v, 'floating');
+    // 记下用户的选择；贴边期间仍保持最上层，取消贴边后按这个选择来
     if (ctx.kind === 'sticky' && store.settings.stickies[ctx.noteId]) {
       store.settings.stickies[ctx.noteId].onTop = !!v;
       scheduleStoreSave();
+    } else if (ctx.kind === 'main') {
+      store.settings.alwaysOnTop = !!v;
     }
+    applyOnTop(ctx);
     return !!v;
   });
   ipcMain.handle('win:hide', (e) => {
@@ -1001,7 +1062,9 @@ function registerIpc() {
     const ctx = ctxOf(e);
     if (!ctx) return;
     ctx.dragging = false;
-    if (ctx.kind === 'main') tryDock(ctx);
+    // 以窗口实际位置为准再判断（位置可能被系统或其他途径改过，自维护的坐标未必同步）
+    if (!ctx.collapsed) { const b = ctx.win.getBounds(); ctx.pos = { x: b.x, y: b.y }; }
+    tryDock(ctx);
   });
   ipcMain.handle('win:menuOpen', (e, open) => { const c = ctxOf(e); if (c) c.menuOpen = !!open; });
   ipcMain.handle('win:setIgnoreMouse', (e, ignore) => {
@@ -1021,7 +1084,7 @@ function registerIpc() {
   ipcMain.handle('dock:expand', (e) => { const c = ctxOf(e); if (c) expand(c); });
   ipcMain.handle('dock:setEnabled', (e, on) => {
     store.settings.dockEnabled = !!on;
-    if (!on && mainCtx && mainCtx.dock) undock(mainCtx);
+    if (!on) allWindows().forEach(c => { if (c.dock) undock(c); });
     scheduleStoreSave();
   });
 
