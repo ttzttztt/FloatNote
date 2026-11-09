@@ -507,8 +507,9 @@ function mergeConflictCopies() {
 }
 
 /* ============ 更改数据目录 ============ */
-function reloadAllWindows() {
-  restoring = true;
+function reloadAllWindows(delay = 0) {
+  restoring = true; // 从现在起忽略窗口发来的增量：旧页面里的改动不能混进新数据
+  if (delay) { setTimeout(() => reloadAllWindows(0), delay); return; }
   const main = mainCtx && !mainCtx.win.isDestroyed() ? mainCtx : null;
   for (const c of allWindows()) if (c !== main) c.win.webContents.reload();
   if (main) {
@@ -571,7 +572,7 @@ function changeDataDir(dir, mode = 'move') {
     console.error('[changeDataDir] location', e.message);
   }
   startDataWatch();
-  reloadAllWindows();
+  reloadAllWindows(150); // 稍等再刷新窗口：先让“切换成功”的结果送回页面
   rebuildTrayMenu();
   return { ok: true, dir: dataDir, mode };
 }

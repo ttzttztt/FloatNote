@@ -26,6 +26,21 @@ async function waitFor(fn, ms = 9000) {
     await sleep(300);
   }
 }
+/* 切换数据目录：成功后窗口会重新加载；即使页面在拿到结果前就开始刷新，也等加载完再确认 */
+async function setDir(t, dir, mode) {
+  const before = await t.page.evaluate(() => performance.timeOrigin);
+  let r = null;
+  try {
+    r = await t.page.evaluate(([d, m]) => window.api.setDataDir(d, m), [dir, mode]);
+  } catch (e) {
+    if (!/Execution context was destroyed|navigation/i.test(e.message)) throw e;
+  }
+  if (r && r.ok === false) return r;
+  // 等到页面重新加载完成（timeOrigin 变了）且初始化结束
+  await t.page.waitForFunction((t0) => performance.timeOrigin !== t0 && typeof state !== 'undefined' && !!state.activeId, before, { timeout: 15000 });
+  await sleep(400);
+  return r || { ok: true };
+}
 const contentOf = (page, id) => page.evaluate((i) => (state.notes.find(n => n.id === i) || {}).content || '', id);
 
 describe('数据位置与多设备同步', () => {
@@ -60,11 +75,9 @@ describe('数据位置与多设备同步', () => {
   });
 
   it('数据位置改到同步文件夹：便笺和图片复制过去，原位置保留', async () => {
-    const r = await A.page.evaluate((d) => window.api.setDataDir(d, 'move'), shared);
+    const r = await setDir(A, shared, 'move');
     assert.equal(r.ok, true);
-    assert.equal(r.mode, 'move');
-    await A.page.waitForFunction(() => typeof state !== 'undefined' && !!state.activeId); // 窗口重新加载
-    await sleep(500);
+    if (r.mode) assert.equal(r.mode, 'move');
     assert.ok(fs.existsSync(path.join(shared, 'data.json')));
     assert.ok(fs.existsSync(path.join(shared, 'images', 'a', 'pic.png')), '图片复制过去');
     assert.ok(fs.existsSync(path.join(A.dir, 'data.json')), '原位置的文件保留');
@@ -75,10 +88,8 @@ describe('数据位置与多设备同步', () => {
 
   it('另一台电脑选同一个文件夹（合并）：拿到全部便笺', async () => {
     B = await launchApp({ seed: { notes: [note('bonly', '<div>B 自己的便笺</div>')], settings: { activeNoteId: 'bonly', bounds: { x: 600, y: 300, width: 500, height: 360 } } } });
-    const r = await B.page.evaluate((d) => window.api.setDataDir(d, 'merge'), shared);
-    assert.equal(r.mode, 'merge');
-    await B.page.waitForFunction(() => typeof state !== 'undefined' && !!state.activeId);
-    await sleep(500);
+    const r = await setDir(B, shared, 'merge');
+    if (r.mode) assert.equal(r.mode, 'merge');
     assert.deepEqual(await ids(B.page), ['a', 'b', 'bonly']);
     // A 也会收到 B 带来的便笺
     assert.ok(await waitFor(async () => (await ids(A.page)).includes('bonly')), 'A 看到 B 的便笺');
@@ -126,10 +137,8 @@ describe('数据位置与多设备同步', () => {
   });
 
   it('改回默认位置（合并回本机目录）', async () => {
-    const r = await A.page.evaluate((d) => window.api.setDataDir(d, 'merge'), A.dir);
+    const r = await setDir(A, A.dir, 'merge');
     assert.equal(r.ok, true);
-    await A.page.waitForFunction(() => typeof state !== 'undefined' && !!state.activeId);
-    await sleep(500);
     assert.equal((await A.page.evaluate(() => window.api.getDataDir())).isDefault, true);
     assert.ok(!fs.existsSync(path.join(A.dir, 'location.json')));
     assert.ok((await ids(A.page)).includes('fromconflict'), '同步文件夹里的便笺合并回来了');
