@@ -57,6 +57,9 @@ async function init() {
   window.api.onDockState(onDockState);
   if (ctx && ctx.dock) onDockState(ctx.dock);
   window.api.onHotkeyChanged(showHotkeys);
+  el.smVersion.textContent = 'v' + (await window.api.getAppInfo()).version;
+  showUpdateState(await window.api.getUpdateState());
+  window.api.onUpdateState(showUpdateState);
   if (!IS_STICKY) {
     window.api.onNewNote(() => newNote());
     window.api.onCapture(appendCapture);

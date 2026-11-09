@@ -145,6 +145,40 @@ el.btnSettings.addEventListener('click', async () => {
   if (!IS_STICKY) el.smAutoLaunch.checked = await window.api.getAutoLaunch();
 });
 
+/* ============ 版本与自动更新 ============ */
+const UPDATE_LABEL = {
+  dev: ['开发版不自动更新', true],
+  portable: ['便携版请手动下载新版本', true],
+  unsupported: ['此安装方式不支持自动更新', true],
+  idle: ['检查更新', false],
+  latest: ['已是最新版本', false],
+  checking: ['正在检查…', true],
+  error: ['检查失败，点击重试', false]
+};
+let readyToastShown = false;
+
+function showUpdateState(st) {
+  if (!st) return;
+  let [label, disabled] = UPDATE_LABEL[st.status] || ['检查更新', false];
+  if (st.status === 'downloading') { label = `正在下载 v${st.version} · ${st.percent || 0}%`; disabled = true; }
+  if (st.status === 'ready') { label = `重启更新到 v${st.version}`; disabled = false; }
+  el.smUpdate.textContent = label;
+  el.smUpdate.disabled = disabled;
+  el.smUpdate.title = st.status === 'error' ? (st.error || '') : '';
+  el.smUpdate.classList.toggle('ready', st.status === 'ready');
+  if (st.status === 'ready' && !readyToastShown && !IS_STICKY) {
+    readyToastShown = true;
+    toastAction(`新版本 v${st.version} 已下载`, '重启更新', () => window.api.installUpdate(), 15000);
+  }
+}
+
+el.smUpdate.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const st = await window.api.getUpdateState();
+  if (st.status === 'ready') window.api.installUpdate();
+  else showUpdateState(await window.api.checkForUpdate());
+});
+
 /* ============ 自定义快捷键：点按钮后按下新的组合键 ============ */
 let hotkeyState = null;
 

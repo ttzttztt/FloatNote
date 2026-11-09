@@ -31,6 +31,8 @@ const el = {
   smCaptureHint: document.getElementById('sm-capture-hint'),
   smHotkeyTip: document.getElementById('sm-hotkey-tip'),
   smAutoLaunch: document.getElementById('sm-autolaunch'),
+  smVersion: document.getElementById('sm-version'),
+  smUpdate: document.getElementById('sm-update'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),
   noteTitleEl: document.getElementById('note-title'),

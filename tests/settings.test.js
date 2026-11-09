@@ -86,4 +86,11 @@ describe('设置：快捷键与开机自启', () => {
     await sleep(200);
     assert.ok(!fs.existsSync(file));
   });
+
+  it('显示版本号；开发版不检查更新', async () => {
+    const pkg = require('../package.json');
+    assert.equal(await t.page.textContent('#sm-version'), 'v' + pkg.version);
+    assert.equal(await t.page.textContent('#sm-update'), '开发版不自动更新');
+    assert.ok(await t.page.isDisabled('#sm-update'));
+  });
 });

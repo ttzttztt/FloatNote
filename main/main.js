@@ -918,6 +918,70 @@ function notify(title, content) {
   }
 }
 
+/* ============ 自动更新：从 GitHub Releases 下载新版本 ============
+   安装版启动 15 秒后、之后每 6 小时检查一次；有新版本就在后台下载，下载完提示「重启更新」，
+   不点的话下次退出时自动安装。开发版（pnpm start）和便携版不能自动更新。 */
+let autoUpdater = null;
+const updateState = { status: 'idle', version: null, percent: 0, error: null };
+// status：dev / portable / unsupported / idle / checking / downloading / ready / latest / error
+
+function setUpdateState(patch) {
+  Object.assign(updateState, patch);
+  broadcast('update:state', Object.assign({}, updateState));
+  rebuildTrayMenu();
+}
+
+function initAutoUpdate() {
+  if (!app.isPackaged || process.env.FLOATNOTE_DISABLE_UPDATE) { updateState.status = 'dev'; return; }
+  if (process.env.PORTABLE_EXECUTABLE_FILE) { updateState.status = 'portable'; return; }
+  if (process.platform === 'linux' && !process.env.APPIMAGE) { updateState.status = 'unsupported'; return; }
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) {
+    updateState.status = 'error';
+    updateState.error = e.message;
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = null;
+  autoUpdater.on('checking-for-update', () => setUpdateState({ status: 'checking', error: null }));
+  autoUpdater.on('update-available', (info) => setUpdateState({ status: 'downloading', version: info.version, percent: 0 }));
+  autoUpdater.on('download-progress', (p) => {
+    const percent = Math.floor(p.percent || 0);
+    if (percent !== updateState.percent) setUpdateState({ status: 'downloading', percent });
+  });
+  autoUpdater.on('update-not-available', () => setUpdateState({ status: 'latest' }));
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdateState({ status: 'ready', version: info.version, percent: 100 });
+    notify('FloatNote 新版本已就绪', `v${info.version} 已下载，重启即可更新（不重启的话下次退出时自动安装）`);
+  });
+  autoUpdater.on('error', (e) => onUpdateError(e));
+  setTimeout(checkForUpdate, 15000);
+  setInterval(checkForUpdate, 6 * 3600 * 1000);
+}
+
+function checkForUpdate() {
+  if (!autoUpdater || ['checking', 'downloading', 'ready'].includes(updateState.status)) return Object.assign({}, updateState);
+  autoUpdater.checkForUpdates().catch(onUpdateError);
+  return Object.assign({}, updateState, { status: 'checking' });
+}
+
+function onUpdateError(e) {
+  const msg = String((e && e.message) || e);
+  // 仓库里还没发布过任何版本：不算失败
+  if (/No published versions/i.test(msg)) { setUpdateState({ status: 'latest', error: null }); return; }
+  setUpdateState({ status: 'error', error: msg.split('\n')[0].slice(0, 300) });
+}
+
+function installUpdate() {
+  if (!autoUpdater || updateState.status !== 'ready') return false;
+  isQuitting = true;
+  flushStore();
+  autoUpdater.quitAndInstall(false, true); // 静默安装后自动重新打开
+  return true;
+}
+
 /* ============ 托盘 ============ */
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'icon-32.png'));
@@ -938,6 +1002,9 @@ function rebuildTrayMenu() {
     { label: '显示 / 隐藏便签', click: () => toggleWindow() },
     { label: '新建便签', click: () => { showWindow(); mainCtx.win.webContents.send('cmd:new-note'); } },
     { label: '找回窗口（移到屏幕中央）', click: () => recenterWindow() },
+    ...(updateState.status === 'ready'
+      ? [{ type: 'separator' }, { label: `重启并更新到 v${updateState.version}`, click: () => installUpdate() }]
+      : []),
     { type: 'separator' },
     {
       label: '从备份恢复',
@@ -1078,6 +1145,10 @@ function registerIpc() {
   ipcMain.handle('hotkey:set', (e, { which, acc }) => setHotkey(which, acc));
   ipcMain.handle('hotkey:suspend', (e, on) => suspendHotkeys(!!on));
   ipcMain.handle('app:getAutoLaunch', () => getAutoLaunch());
+  ipcMain.handle('app:info', () => ({ version: app.getVersion() }));
+  ipcMain.handle('update:get', () => Object.assign({}, updateState));
+  ipcMain.handle('update:check', () => checkForUpdate());
+  ipcMain.handle('update:install', () => installUpdate());
   ipcMain.handle('app:setAutoLaunch', (e, on) => setAutoLaunch(!!on));
   ipcMain.handle('win:quit', () => { isQuitting = true; app.quit(); });
 
@@ -1118,6 +1189,7 @@ if (!gotLock) {
     createTray();
     dailyBackup();
     setInterval(dailyBackup, 3 * 3600 * 1000); // 跨天不关机也会备份
+    initAutoUpdate();
     setTimeout(cleanupImages, Number(process.env.FLOATNOTE_CLEANUP_DELAY) || 15000);
     if (recoveredFrom) notify('数据文件损坏，已自动恢复', `已从 ${recoveredFrom} 的备份恢复。损坏的文件已改名保留在数据文件夹中。`);
   });

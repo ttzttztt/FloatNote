@@ -954,3 +954,8 @@ body.ctrl-held .editor a { cursor: pointer; text-decoration-color: currentColor;
 .pm-hotkey-tip { font-size: 11px; color: var(--muted); text-align: right; margin: -2px 0 4px; }
 .pm-hotkey-tip.error { color: var(--danger); }
 .pm-hotkey-tip[hidden] { display: none; }
+
+/* ============ 设置：版本与更新 ============ */
+.pm-version { color: var(--muted); font-size: 11px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.hotkey-btn:disabled { cursor: default; color: var(--muted); border-color: var(--border); }
+.hotkey-btn.ready { background: var(--accent); border-color: var(--accent); color: #fff; }

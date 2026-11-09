@@ -10,7 +10,8 @@
     "dist": "node scripts/dist.js",
     "dist:win": "node scripts/dist.js --win",
     "dist:mac": "node scripts/dist.js --mac",
-    "dist:linux": "node scripts/dist.js --linux"
+    "dist:linux": "node scripts/dist.js --linux",
+    "release": "node scripts/release.js"
   },
   "author": "tian",
   "license": "MIT",
@@ -82,11 +83,22 @@
       "category": "Utility",
       "icon": "assets/icon-256.png",
       "artifactName": "FloatNote-${version}-${arch}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ttzttztt",
+        "repo": "FloatNote",
+        "releaseType": "draft"
+      }
+    ]
   },
   "pnpm": {
     "overrides": {
       "@electron/node-gyp": "10.2.0-electron.1"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
   }
 }

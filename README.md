@@ -105,6 +105,22 @@ pnpm dist:win        # Windows：安装程序（可选安装目录）+ 免安装
 - Windows 安装包需要在 Windows 上打；也可以在 GitHub 仓库的 Actions →「打包」→ Run workflow，或推送 `v1.0.0` 这样的版本标签，自动在 Windows / Linux 上打包，产物在该次运行的 Artifacts 里下载。
 - 安装版与开发版共用同一个数据目录，装上之后便笺都在。
 
+## 发布新版本与自动更新
+
+```bash
+pnpm release patch   # 1.0.0 → 1.0.1；也可以写 minor / major，或直接写版本号 pnpm release 1.2.0
+```
+
+脚本会改好 `package.json` 的版本号、提交并打标签，然后按提示推送分支和标签。推送标签后，GitHub Actions（`.github/workflows/build.yml`）会：
+
+1. 检查标签与 `package.json` 版本一致，创建草稿 Release；
+2. 在 Windows / Linux 上打包，把安装包和更新信息（`latest.yml` 等）上传到这个 Release；
+3. 两边都成功后正式发布。
+
+已安装的 FloatNote（安装版、Linux AppImage）在启动 15 秒后及之后每 6 小时检查一次，有新版本就在后台下载，下载完弹出「重启更新」，不点的话下次退出时自动安装。设置面板里可以看到当前版本、手动检查更新。开发版（`pnpm start`）和便携版不会自动更新。
+
+> 更新包从 GitHub 下载，国内网络下可能较慢或失败，失败时会在 6 小时后自动重试，也可以在设置里手动重试，或去 Releases 页面手动下载安装。
+
 ## 数据位置
 
 便笺内容只保存在本机的系统用户数据目录（Electron `app.getPath('userData')`），**不在项目目录里，也不会被提交到 Git / GitHub**：
