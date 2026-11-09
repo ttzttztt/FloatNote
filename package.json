@@ -10,7 +10,8 @@
     "dist": "node scripts/dist.js",
     "dist:win": "node scripts/dist.js --win",
     "dist:mac": "node scripts/dist.js --mac",
-    "dist:linux": "node scripts/dist.js --linux"
+    "dist:linux": "node scripts/dist.js --linux",
+    "release": "node scripts/release.js"
   },
   "author": "tian",
   "license": "MIT",
@@ -49,8 +50,7 @@
           ]
         }
       ],
-      "icon": "assets/icon-256.png",
-      "artifactName": "FloatNote-${version}-${arch}-${target}.${ext}"
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -63,7 +63,8 @@
         "zh_CN"
       ],
       "language": "2052",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "FloatNote-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "FloatNote-${version}-portable.${ext}"
@@ -73,20 +74,31 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
-      "icon": "assets/icon-256.png"
+      "icon": "assets/icon-1024.png"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
       "category": "Utility",
-      "icon": "assets/icon-256.png",
+      "icon": "assets/icon-512.png",
       "artifactName": "FloatNote-${version}-${arch}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ttzttztt",
+        "repo": "FloatNote",
+        "releaseType": "draft"
+      }
+    ]
   },
   "pnpm": {
     "overrides": {
       "@electron/node-gyp": "10.2.0-electron.1"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
   }
 }

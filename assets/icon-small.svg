@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- FloatNote 图标（小尺寸版，16–32px：托盘 / 任务栏）：去掉阴影与横线，便笺放大、勾加粗 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A3B46"/><stop offset="1" stop-color="#1E1F26"/></linearGradient>
+    <linearGradient id="y" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE48A"/><stop offset="1" stop-color="#FFC23F"/></linearGradient></defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="url(#bg)"/>
+  <g transform="rotate(-8 128 128)">
+    <path d="M62 50 h124 a16 16 0 0 1 16 16 v92 l-48 48 h-92 a16 16 0 0 1 -16 -16 v-124 a16 16 0 0 1 16 -16 z" fill="url(#y)"/>
+    <path d="M202 158 l-48 48 v-34 a14 14 0 0 1 14 -14 z" fill="#C98A12"/>
+    <path d="M86.8 120.08 l24.96 24.96 l41.6 -47.84" stroke="#2B2B31" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

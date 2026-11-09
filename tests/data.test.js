@@ -31,8 +31,8 @@ describe('数据与备份', () => {
     t = await launchApp({ dir, env: { FLOATNOTE_CLEANUP_DELAY: '1500' } });
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   it('只保存改动的字段，其他数据原样保留', async () => {

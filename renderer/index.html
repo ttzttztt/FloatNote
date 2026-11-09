@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data:; media-src 'self' file: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' file:; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: fnimg:; media-src 'self' file: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' file:; connect-src 'self' fnimg:; script-src 'self'">
   <title>FloatNote</title>
   <!-- 霞鹜文楷 屏幕阅读版（SIL OFL 1.1），按 unicode-range 分片，只加载用到的字 -->
   <link rel="stylesheet" href="fonts/lxgw-wenkai-screen/lxgwwenkaiscreen.css">
@@ -109,6 +109,14 @@
     <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
     <label class="pm-row main-only"><span>拖到屏幕边缘时贴边收起</span><input type="checkbox" id="sm-dock" checked></label>
     <label class="pm-row main-only"><span>开机自动启动</span><input type="checkbox" id="sm-autolaunch"></label>
+    <div class="pm-row main-only pm-datadir"><span>数据位置</span>
+      <span class="datadir-ctl">
+        <button class="datadir-path" id="sm-datadir" title="打开数据文件夹"></button>
+        <button class="hotkey-btn" id="sm-datadir-change" title="放到 OneDrive、坚果云等同步文件夹里，多台电脑就能共用便笺">更改…</button>
+        <button class="hotkey-btn" id="sm-datadir-reset" title="改回默认位置">默认</button>
+      </span>
+    </div>
+    <div class="pm-row main-only"><span>版本 <span class="pm-version" id="sm-version"></span></span><button class="hotkey-btn" id="sm-update"></button></div>
     <div class="pm-sep"></div>
     <div class="pm-row"><span>唤起 / 隐藏</span><button class="hotkey-btn" id="sm-hotkey-hint" data-which="toggle" title="点击后按下新的组合键"></button></div>
     <div class="pm-row"><span>快速捕捉</span><button class="hotkey-btn" id="sm-capture-hint" data-which="capture" title="点击后按下新的组合键"></button></div>

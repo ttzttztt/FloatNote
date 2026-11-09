@@ -19,8 +19,8 @@ describe('便笺管理与界面', () => {
     });
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   it('启动时清理空便笺，状态栏不把格式差异当成编辑', async () => {

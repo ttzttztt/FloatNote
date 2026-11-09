@@ -56,6 +56,8 @@ async function launchApp({ seed, dir, env = {} } = {}) {
     dir: userData,
     errors,
     saved: () => JSON.parse(fs.readFileSync(path.join(userData, 'data.json'), 'utf-8')),
+    // 本机设置（窗口位置、桌面便笺、快捷键等）存在 local.json，不随数据目录同步
+    local: () => JSON.parse(fs.readFileSync(path.join(userData, 'local.json'), 'utf-8')),
     html: () => page.innerHTML('#editor'),
     close: () => app.close()
   };
