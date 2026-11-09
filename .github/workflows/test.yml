@@ -21,6 +21,21 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Electron 程序约 100MB，缓存起来：下次运行不用再从 GitHub 下载
+      - name: 缓存 Electron 程序
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+      # 单独一步下载，GitHub 偶尔返回 502 / 504，失败就隔一会儿重试，而不是让所有测试直接取消
+      - name: 下载 Electron 程序（失败自动重试）
+        run: |
+          for i in 1 2 3 4 5; do
+            node -e "require('electron')" && exit 0
+            echo "第 $i 次下载失败，$((i * 15)) 秒后重试"; sleep $((i * 15))
+          done
+          exit 1
       - name: 安装虚拟显示器与按键模拟
         run: sudo apt-get update && sudo apt-get install -y xvfb xdotool
       - name: 运行测试
