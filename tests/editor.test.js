@@ -1,6 +1,8 @@
 'use strict';
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { launchApp, note, sleep } = require('./helpers');
 
 describe('编辑器', () => {
@@ -130,5 +132,43 @@ describe('编辑器', () => {
     await link.click({ modifiers: ['Control'] });
     await sleep(200);
     assert.equal(await t.app.evaluate(() => globalThis.__opened), 'https://www.example.org/a?b=1');
+  });
+
+  it('粘贴的大图自动压缩成 WebP，长边不超过 1920；GIF 原样保存', async () => {
+    await reset();
+    const r = await t.page.evaluate(async () => {
+      // 仿一张 4K 截图：渐变背景 + 大量文字 + 色块
+      const c = document.createElement('canvas');
+      c.width = 3840; c.height = 2160;
+      const g = c.getContext('2d');
+      const grad = g.createLinearGradient(0, 0, 3840, 2160);
+      grad.addColorStop(0, '#e8eefc'); grad.addColorStop(1, '#fff6e0');
+      g.fillStyle = grad; g.fillRect(0, 0, 3840, 2160);
+      g.fillStyle = '#333'; g.font = '28px sans-serif';
+      for (let y = 40; y < 2160; y += 40) g.fillText('FloatNote 截图测试 The quick brown fox jumps over the lazy dog 0123456789 '.repeat(3), 20, y);
+      for (let i = 0; i < 60; i++) { g.fillStyle = `hsl(${i * 6},70%,60%)`; g.fillRect((i * 61) % 3700, (i * 97) % 2000, 120, 80); }
+      const png = c.toDataURL('image/png');
+      await insertImage(png);
+      const gif = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+      await insertImage(gif);
+      const imgs = [...el.editor.querySelectorAll('img')];
+      await Promise.all(imgs.map(i => i.decode().catch(() => {})));
+      return { pngBytes: Math.floor((png.length - 22) * 3 / 4), srcs: imgs.map(i => i.getAttribute('src')), w: imgs[0].naturalWidth, h: imgs[0].naturalHeight };
+    });
+    assert.equal(r.srcs.length, 2);
+    assert.match(r.srcs[0], /\.webp$/, '按粘贴顺序排列：先大图');
+    assert.match(r.srcs[1], /\.gif$/, '再 GIF');
+    await t.page.keyboard.type('图后文字');
+    assert.match(await t.html(), /\.gif">(<br>)?图后文字/, '接着打字出现在图片后面');
+    const dir = path.join(t.dir, 'images', 'a');
+    const files = fs.readdirSync(dir);
+    const webp = files.find(f => f.endsWith('.webp'));
+    assert.ok(webp, '保存成 WebP：' + files.join(','));
+    assert.ok(files.some(f => f.endsWith('.gif')), 'GIF 原样保存');
+    assert.equal(Math.max(r.w, r.h), 1920, '长边缩到 1920');
+    assert.equal(r.w / r.h, 16 / 9, '保持比例');
+    const saved = fs.statSync(path.join(dir, webp)).size;
+    assert.ok(saved < r.pngBytes / 3, `体积明显变小：原图 ${r.pngBytes} → ${saved} 字节`);
+    console.log(`    图片压缩：${(r.pngBytes / 1048576).toFixed(2)}MB → ${(saved / 1024).toFixed(0)}KB`);
   });
 });

@@ -322,29 +322,71 @@ el.editor.addEventListener('input', (e) => {
   sel.addRange(r);
 });
 
+/* 在光标处插入图片，后面跟一个换行，光标放到图片之后（接着打字在图片下方）；
+   光标不在编辑区里时追加到末尾 */
 function insertImageAtCaret(img) {
   const sel = window.getSelection();
-  if (sel.rangeCount) {
-    const range = sel.getRangeAt(0);
+  let range;
+  if (sel.rangeCount && el.editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    range = sel.getRangeAt(0);
     range.deleteContents();
-    range.insertNode(img);
-    const br = document.createElement('br');
-    range.insertNode(br);
-    range.setStartAfter(br);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
   } else {
-    el.editor.appendChild(img);
+    range = document.createRange();
+    range.selectNodeContents(el.editor);
+    range.collapse(false);
   }
+  const br = document.createElement('br');
+  range.insertNode(br);  // 先插换行，再把图片插到它前面：顺序是 图片 → 换行 → 光标
+  range.insertNode(img);
+  const after = document.createRange();
+  after.setStartAfter(br);
+  after.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(after);
   el.editor.focus();
+}
+
+/* ---- 图片压缩：长边超过 1920 像素就等比缩小，再转成 WebP ----
+   一张 4K 截图原样保存要 5–10MB；压缩后通常只剩几百 KB，便笺里看不出区别。
+   GIF 保持原样（会丢动画）；压缩后反而变大的小图标也保留原图。 */
+const IMAGE_MAX_SIDE = 1920;
+const IMAGE_QUALITY = 0.86;
+
+function dataUrlBytes(dataUrl) {
+  const i = dataUrl.indexOf(',');
+  return Math.floor((dataUrl.length - i - 1) * 3 / 4);
+}
+
+async function compressImage(dataUrl) {
+  if (!/^data:image\/(png|jpe?g|webp|bmp)/i.test(dataUrl)) return dataUrl; // gif 等原样保存
+  try {
+    // 用 <img> 解码：页面的安全策略不允许 fetch(data:)，但允许图片使用 data: 地址
+    const bmp = new Image();
+    bmp.src = dataUrl;
+    await bmp.decode();
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bmp.naturalWidth, bmp.naturalHeight));
+    const w = Math.max(1, Math.round(bmp.naturalWidth * scale));
+    const h = Math.max(1, Math.round(bmp.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w, h);
+    const out = canvas.toDataURL('image/webp', IMAGE_QUALITY);
+    if (!out.startsWith('data:image/webp')) return dataUrl; // 编码失败
+    return scale < 1 || dataUrlBytes(out) < dataUrlBytes(dataUrl) ? out : dataUrl;
+  } catch (e) {
+    console.warn('compressImage', e);
+    return dataUrl;
+  }
 }
 
 async function insertImage(dataUrl) {
   const note = currentNote();
   if (!note) return;
   try {
-    const url = await window.api.saveImage(note.id, dataUrl);
+    const url = await window.api.saveImage(note.id, await compressImage(dataUrl));
     const img = document.createElement('img');
     img.src = url;
     Undo.before();
