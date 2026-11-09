@@ -176,11 +176,22 @@ describe('编辑器', () => {
     const content = '<div class="todo"><input type="checkbox">&nbsp;品牌同步</div><div class="todo" data-indent="1"><input type="checkbox">&nbsp;缩进的待办</div>';
     const setup = () => t.page.evaluate((c) => { el.editor.innerHTML = c; }, content);
     const box = async (i) => t.page.locator('#editor > .todo').nth(i).boundingBox();
-    // 行尾右侧空白处
+    // 行尾右侧空白处：光标直接出现在行尾，中途从不出现在复选框前面（否则会看到光标从头跳到尾）
     for (const i of [0, 1]) {
       await setup();
+      await t.page.evaluate(() => {
+        window.__caretLog = [];
+        document.addEventListener('selectionchange', () => {
+          const s = getSelection();
+          if (!s.rangeCount) return;
+          const line = (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement).closest('.todo');
+          if (line) window.__caretLog.push(caretBeforeCheckbox(line) ? 'before' : 'ok');
+        });
+      });
       const b = await box(i);
       await t.page.mouse.click(b.x + b.width - 20, b.y + b.height / 2);
+      await sleep(50);
+      assert.ok(!(await t.page.evaluate(() => window.__caretLog)).includes('before'), '光标没有先跑到复选框前面');
       await t.page.keyboard.type('X');
       assert.match(await t.html(), i ? /缩进的待办X<\/div>/ : /品牌同步X<\/div>/);
     }

@@ -231,16 +231,24 @@ function caretBeforeCheckbox(line) {
   return caret.compareBoundaryPoints(Range.START_TO_START, textStart) < 0;
 }
 
-el.editor.addEventListener('click', (e) => {
-  const line = e.target && e.target.closest && e.target.closest('#editor > .todo, #editor .todo');
-  if (!line || !lineCheckbox(line) || e.target.matches('input')) return;
-  // 点在这一行文字的右侧空白处：放到行尾
+/* 在按下鼠标的那一刻就接管：如果等浏览器先把光标放到行首、点击结束后再挪，会看到光标从头跳到尾。
+   只处理点在待办行空白处（文字右侧，或复选框与文字之间）；点文字、点复选框、双击、Shift 点击都交给浏览器 */
+el.editor.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || e.detail > 1 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const line = e.target && e.target.closest && e.target.closest('.todo');
+  if (!line || e.target !== line || !el.editor.contains(line) || !lineCheckbox(line)) return;
   const r = document.createRange();
   r.selectNodeContents(line);
   const rects = [...r.getClientRects()].filter(x => x.width || x.height);
   const textRight = rects.length ? Math.max(...rects.map(x => x.right)) : 0;
-  if (e.clientX >= textRight - 1) { caretLineEnd(line); return; }
-  if (caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+  const cbRect = lineCheckbox(line).getBoundingClientRect();
+  const toEnd = e.clientX >= textRight - 1;
+  const toStart = !toEnd && e.clientX > cbRect.right && e.clientX < cbRect.right + 12;
+  if (!toEnd && !toStart) return;
+  e.preventDefault(); // 不让浏览器自己放光标（它会放到复选框前面）
+  if (document.activeElement !== el.editor) el.editor.focus({ preventScroll: true });
+  if (toEnd) caretLineEnd(line);
+  else caretAfterCheckbox(line);
 });
 
 /* 光标所在的待办行（不在待办行里返回 null） */
