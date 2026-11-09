@@ -150,3 +150,32 @@ describe('工具栏、这张便笺的菜单、快捷键', () => {
     assert.ok(inside === true, JSON.stringify(inside));
   });
 });
+
+describe('窄窗口', () => {
+  let t;
+  before(async () => {
+    t = await launchApp({ seed: { notes: [note('a', '<div>一张名字特别特别长的便笺标题用来测试省略</div>')], settings: { activeNoteId: 'a', bounds: { x: 200, y: 160, width: 320, height: 260 } } } });
+  });
+  after(async () => {
+    await t.close();
+    assert.deepEqual(t.errors, []);
+  });
+
+  it('最小宽度下工具栏按钮都在卡片里，删除收进「⋯」', async () => {
+    const r = await t.page.evaluate(() => {
+      const c = el.card.getBoundingClientRect();
+      const out = [...document.querySelectorAll('.toolbar .tbtn, .toolbar .pill')]
+        .filter(b => b.offsetParent)
+        .filter(b => { const r = b.getBoundingClientRect(); return r.left < c.left || r.right > c.right; })
+        .map(b => b.id);
+      return { width: innerWidth, out, deleteShown: !!el.btnDelete.offsetParent };
+    });
+    assert.equal(r.width, 320);
+    assert.deepEqual(r.out, []);
+    assert.equal(r.deleteShown, false);
+    await t.page.click('#btn-note-menu');
+    await t.page.click('#nm-delete');
+    await sleep(200);
+    assert.ok(await t.page.evaluate(() => state.notes.find(n => n.id === 'a').trashed));
+  });
+});

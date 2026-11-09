@@ -127,6 +127,7 @@ const noteMenuAction = (id, fn) => document.getElementById(id).addEventListener(
 noteMenuAction('nm-rename', () => startRename());
 noteMenuAction('nm-tag', () => openTagInput());
 noteMenuAction('nm-stick', (note) => { if (note) stickNote(note.id); });
+noteMenuAction('nm-delete', () => deleteNote());
 noteMenuAction('nm-pin', (note) => {
   if (!note) return;
   note.pinned = !note.pinned;
