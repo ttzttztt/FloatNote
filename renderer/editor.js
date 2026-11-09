@@ -269,6 +269,188 @@ el.editor.addEventListener('keydown', (e) => {
   caretAfterCheckbox(line);
 });
 
+/* 文字开头的位置（复选框和后面的空格之后） */
+function todoTextStart(line) {
+  const cb = lineCheckbox(line);
+  const sp = cb.nextSibling;
+  return sp && sp.nodeType === 3 && sp.data.startsWith(' ')
+    ? [sp, 1]
+    : [line, Array.prototype.indexOf.call(line.childNodes, cb) + 1];
+}
+
+/* 光标在待办文字开头（或更前面） */
+function caretAtTodoTextStart(line) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const caret = document.createRange();
+  caret.setStart(sel.anchorNode, sel.anchorOffset);
+  const start = document.createRange();
+  start.setStart(...todoTextStart(line));
+  return caret.compareBoundaryPoints(Range.START_TO_START, start) <= 0;
+}
+
+/* 一行的末尾（<br> 占位之前） */
+function setCaretLineEnd(line) {
+  if (line.nodeType === 3) { setCaret(line, line.length); return; }
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let last = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n;
+  if (last) setCaret(last, last.length);
+  else if (lineCheckbox(line)) caretAfterCheckbox(line);
+  else setCaret(line, 0);
+}
+
+/* 光标是否在 node 这一行的末尾（后面没有文字和图片） */
+function caretAtEndOf(node) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const r = document.createRange();
+  r.setStart(sel.anchorNode, sel.anchorOffset);
+  if (node.nodeType === 3) r.setEnd(node, node.length);
+  else r.setEndAfter(node.lastChild || node);
+  return !r.toString().replace(/[ \s]/g, '') && !r.cloneContents().querySelector('img,input');
+}
+
+/* 去掉待办行开头的复选框和空格，返回剩下的子节点 */
+function todoBody(line) {
+  const cb = lineCheckbox(line);
+  const sp = cb.nextSibling;
+  if (sp && sp.nodeType === 3) {
+    sp.data = sp.data.replace(/^ /, '');
+    if (!sp.data) sp.remove();
+  }
+  cb.remove();
+  return [...line.childNodes].filter(n => n.nodeName !== 'BR' || line.childNodes.length > 1);
+}
+
+/* 把一个列表项“提”出来一级：嵌套的回到上一级列表；最外层的变成普通的一行，列表从这里断开。
+   不用 execCommand('outdent')：Chromium 会生成 <li> 直接套 <li> 的错误结构，顶层项还会变成游离的文字 */
+function liftListItem(li) {
+  const list = li.parentElement;
+  const tag = list.tagName.toLowerCase();
+  const after = [];
+  for (let n = li.nextSibling; n; n = n.nextSibling) after.push(n);
+  const parentLi = list.parentElement && list.parentElement.closest('li');
+  let caretHost;
+  if (parentLi && list.parentElement === parentLi && el.editor.contains(parentLi)) {
+    // 后面的同级项跟着它，成为它的子列表
+    if (after.length) {
+      const sub = document.createElement(tag);
+      sub.append(...after);
+      li.appendChild(sub);
+    }
+    parentLi.after(li);
+    if (!list.children.length) list.remove();
+    caretHost = li;
+  } else {
+    const line = document.createElement('div');
+    const nestedLists = [...li.children].filter(c => /^(UL|OL)$/.test(c.tagName));
+    line.append(...[...li.childNodes].filter(n => !nestedLists.includes(n)));
+    if (!line.firstChild) line.appendChild(document.createElement('br'));
+    const top = list.closest('ul, ol') === list && list.parentElement !== el.editor ? lineOf(list) : list;
+    let tail = null;
+    if (after.length) {
+      tail = document.createElement(tag);
+      tail.append(...after);
+    }
+    li.remove();
+    // 列表被包在某个 div 里时，断开后的几段都放到那个 div 后面
+    const anchor = top && top !== list ? top : list;
+    anchor.after(line, ...nestedLists, ...(tail ? [tail] : []));
+    if (!list.children.length) list.remove();
+    if (anchor !== list && anchor.parentNode && !anchor.textContent && !anchor.querySelector('img,li')) anchor.remove();
+    caretHost = line;
+  }
+  const first = caretHost.firstChild;
+  if (first && first.nodeType === 3) setCaret(first, 0);
+  else setCaret(caretHost, 0);
+}
+
+/* 待办行上的退格 / Delete / 方向键：复选框和它后面的空格当成一个整体，不让光标钻进去、也不用按两次 */
+el.editor.addEventListener('keydown', (e) => {
+  if (e.isComposing || e.defaultPrevented || e.altKey || e.metaKey) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) return;
+  const done = () => { Undo.record(); scheduleSave(100); };
+
+  // 退格（含 Ctrl+退格）在待办文字开头：一次就去掉复选框，变回普通文字，光标留在行首
+  const todoLine = e.key === 'Backspace' && !e.shiftKey ? caretTodoLine() : null;
+  if (todoLine && caretAtTodoTextStart(todoLine)) {
+    const line = todoLine;
+    e.preventDefault();
+    Undo.before();
+    unmakeTodo(line);
+    const first = line.firstChild;
+    if (first && first.nodeType === 3) setCaret(first, 0);
+    else setCaret(line, 0);
+    done();
+    return;
+  }
+
+  // 退格在列表项开头：先去掉圆点 / 编号（嵌套的先退一级），文字留在原来那行；
+  // 浏览器默认会把它并进上一项或上一行，第一项还会没反应
+  if (e.key === 'Backspace' && !e.shiftKey && sel.isCollapsed) {
+    const a = sel.anchorNode;
+    const li = (a.nodeType === 3 ? a.parentElement : a).closest('li');
+    if (!li || !el.editor.contains(li)) return;
+    const r = document.createRange();
+    r.setStart(li, 0);
+    r.setEnd(a, sel.anchorOffset);
+    if (r.toString() || r.cloneContents().querySelector('img')) return;
+    e.preventDefault();
+    Undo.before();
+    liftListItem(li);
+    done();
+    return;
+  }
+
+  // Delete 在行尾、下一行是待办：把下一行的文字接过来（不带复选框）
+  if (e.key === 'Delete' && !e.shiftKey && sel.isCollapsed) {
+    const line = lineOf(sel.anchorNode);
+    const next = line && line.nextSibling;
+    if (!next || next.nodeType !== 1 || !lineCheckbox(next) || !caretAtEndOf(line)) return;
+    e.preventDefault();
+    Undo.before();
+    const mk = document.createElement('span');
+    sel.getRangeAt(0).insertNode(mk);
+    const body = todoBody(next);
+    if (line.nodeType === 1) {
+      // 空行只有一个 <br> 占位：接上文字后就不需要它了
+      if (line.lastChild && line.lastChild.nodeName === 'BR') line.lastChild.remove();
+      line.append(...body);
+    } else {
+      next.before(...body);
+    }
+    next.remove();
+    const r = document.createRange();
+    r.setStartAfter(mk);
+    r.collapse(true);
+    mk.remove();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    done();
+    return;
+  }
+
+  // ← 在待办文字开头：直接跳到上一行末尾（否则会卡在复选框后面动不了）
+  if (e.key === 'ArrowLeft' && !e.shiftKey) {
+    const line = caretTodoLine();
+    if (!line || !caretAtTodoTextStart(line)) return;
+    e.preventDefault();
+    const prev = lineOf(line).previousSibling;
+    if (prev) setCaretLineEnd(prev);
+    return;
+  }
+
+  // Shift+Home：只选到文字开头，不把复选框和空格选进去
+  if (e.key === 'Home' && e.shiftKey && !e.ctrlKey) {
+    const line = caretTodoLine();
+    if (!line) return;
+    e.preventDefault();
+    sel.setBaseAndExtent(sel.anchorNode, sel.anchorOffset, ...todoTextStart(line));
+  }
+});
+
 // 真要输入时再兜底一次：光标还在复选框前面，就先挪到文字开头再输入
 el.editor.addEventListener('beforeinput', (e) => {
   if (!e.inputType.startsWith('insert') || e.isComposing) return;
@@ -564,6 +746,39 @@ function openTagInput() {
   input.addEventListener('blur', commit);
 }
 
+/* Ctrl+Shift+8 / Ctrl+Shift+7：当前行变成圆点 / 编号列表，已经是就还原 */
+function toggleList(ordered) {
+  el.editor.focus();
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) focusEditorEnd();
+  Undo.before();
+  const todo = caretTodoLine();
+  if (todo) unmakeTodo(todo); // 待办和列表不叠加
+  // execCommand 会把光标放回行首：先记下光标在这一行文字里的位置，转换后放回去
+  const line = caretLine();
+  let offset = 0;
+  if (line && sel.rangeCount) {
+    const r = document.createRange();
+    r.setStart(line, 0);
+    r.setEnd(sel.anchorNode, sel.anchorOffset);
+    offset = r.toString().length;
+  }
+  document.execCommand(ordered ? 'insertOrderedList' : 'insertUnorderedList');
+  unwrapList();
+  const a = sel.rangeCount && sel.anchorNode;
+  const host = a && ((a.nodeType === 3 ? a.parentElement : a).closest('li') || lineOf(a));
+  if (host) {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    let rest = offset;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (rest <= n.length) { setCaret(n, rest); break; }
+      rest -= n.length;
+    }
+  }
+  Undo.record();
+  scheduleSave(100);
+}
+
 /* 打开切换菜单（Ctrl+F 时直接定位到搜索框） */
 function openSwitcher() {
   if (IS_STICKY) return; // 桌面便笺只有一张，没有切换菜单
@@ -593,6 +808,7 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod || !e.shiftKey) return;
   const key = e.key.toLowerCase();
+  if (e.code === 'Digit8' || e.code === 'Digit7') { e.preventDefault(); toggleList(e.code === 'Digit7'); return; }
   if (key === 't') { e.preventDefault(); toggleTodo(); }
   else if (key === 'l') { e.preventDefault(); openTagInput(); }
   else if (key === 'i') { e.preventDefault(); pasteClipboardImage(); }

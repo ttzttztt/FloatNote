@@ -220,6 +220,20 @@ html, body {
 .toolbar:active { cursor: grabbing; }
 
 .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 8px; }
+/* 窗口变窄时：标题先缩短（省略号），按钮永远不被挤出卡片 */
+.toolbar-left { flex: 1 1 auto; min-width: 0; }
+.toolbar-right { flex: 0 0 auto; }
+.toolbar .tbtn { flex: 0 0 auto; }
+.toolbar .pill { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 500px) {
+  .toolbar { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  .toolbar-left, .toolbar-right { gap: 2px; }
+  .vsep { display: none; }
+}
+/* 再窄：删除按钮收进「⋯」菜单（菜单里一直有「删除这张便笺」） */
+@media (max-width: 420px) {
+  body.mode-main #btn-delete { display: none; }
+}
 
 .tbtn {
   -webkit-app-region: no-drag;
@@ -572,6 +586,7 @@ body.collapsed .card { outline-color: transparent; }
 }
 .nm-item:hover, .nm-item:focus-visible { background: var(--hover); outline: none; }
 .nm-item .pm-hint { max-width: none; }
+.nm-item.nm-danger > span:first-child { color: #d0453b; }
 #btn-note-menu .dot { fill: currentColor; stroke: none; }
 
 /* ============ 便笺切换菜单 ============ */
@@ -1034,20 +1049,26 @@ body.ctrl-held .editor a { cursor: pointer; text-decoration-color: currentColor;
 .hotkey-btn.ready { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* ============ 设置：数据位置 ============ */
-.pm-datadir { align-items: flex-start; }
-.datadir-ctl { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.pm-datadir { margin: 7px 0; }
+.pm-datadir .pm-row { margin: 0 0 4px; }
+/* 完整路径：可能很长，允许折行；点击打开文件夹 */
 .datadir-path {
-  border: none;
-  background: transparent;
-  font: inherit;
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--field);
+  font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
-  color: var(--muted);
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  color: var(--text);
+  text-align: left;
+  word-break: break-all;
+  white-space: normal;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 4px 7px;
 }
-.datadir-path:hover { color: var(--accent-text); text-decoration: underline; }
-.datadir-ctl .hotkey-btn[hidden] { display: none; }
+.datadir-path:hover { border-color: var(--accent); color: var(--accent-text); }
+.datadir-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.datadir-actions .hotkey-btn[hidden] { display: none; }

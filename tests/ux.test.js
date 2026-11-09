@@ -150,3 +150,108 @@ describe('工具栏、这张便笺的菜单、快捷键', () => {
     assert.ok(inside === true, JSON.stringify(inside));
   });
 });
+
+describe('窄窗口', () => {
+  let t;
+  before(async () => {
+    t = await launchApp({ seed: { notes: [note('a', '<div>一张名字特别特别长的便笺标题用来测试省略</div>')], settings: { activeNoteId: 'a', bounds: { x: 200, y: 160, width: 320, height: 260 } } } });
+  });
+  after(async () => {
+    await t.close();
+    assert.deepEqual(t.errors, []);
+  });
+
+  it('最小宽度下工具栏按钮都在卡片里，删除收进「⋯」', async () => {
+    const r = await t.page.evaluate(() => {
+      const c = el.card.getBoundingClientRect();
+      const out = [...document.querySelectorAll('.toolbar .tbtn, .toolbar .pill')]
+        .filter(b => b.offsetParent)
+        .filter(b => { const r = b.getBoundingClientRect(); return r.left < c.left || r.right > c.right; })
+        .map(b => b.id);
+      return { width: innerWidth, out, deleteShown: !!el.btnDelete.offsetParent };
+    });
+    assert.equal(r.width, 320);
+    assert.deepEqual(r.out, []);
+    assert.equal(r.deleteShown, false);
+    await t.page.click('#btn-note-menu');
+    await t.page.click('#nm-delete');
+    await sleep(200);
+    assert.ok(await t.page.evaluate(() => state.notes.find(n => n.id === 'a').trashed));
+  });
+});
+
+describe('待办 / 列表上的退格、Delete、方向键', () => {
+  let t;
+  const T = (txt, c) => `<div class="todo"><input type="checkbox"${c ? ' checked="checked"' : ''}> ${txt}</div>`;
+  before(async () => {
+    t = await launchApp({ seed: { notes: [note('a', '')], settings: { activeNoteId: 'a' } } });
+  });
+  after(async () => {
+    await t.close();
+    assert.deepEqual(t.errors, []);
+  });
+  /* 设内容和光标，按键，返回带光标标记 | 的 HTML（复选框写成 [] / [x]，不换行空格写成 _） */
+  const run = async (html, caret, keys) => {
+    await t.page.evaluate(([html, caret]) => {
+      el.editor.innerHTML = html;
+      el.editor.focus();
+      const [sel, idx, where] = caret;
+      const node = el.editor.querySelectorAll(sel)[idx];
+      if (where === 'textStart') caretAfterCheckbox(node);
+      else if (where === 'end') setCaretLineEnd(node);
+      else setCaret(node.firstChild && node.firstChild.nodeType === 3 ? node.firstChild : node, 0);
+      Undo.record();
+    }, [html, caret]);
+    for (const k of keys) { await t.page.keyboard.press(k); await sleep(40); }
+    return t.page.evaluate(() => {
+      const mk = document.createTextNode('|');
+      getSelection().getRangeAt(0).insertNode(mk);
+      const h = el.editor.innerHTML.replace(/<input type="checkbox"( checked="checked")?>/g, (m, c) => (c ? '[x]' : '[]'))
+        .replace(/&nbsp;/g, '_').replace(/ class="todo"/g, '.t');
+      mk.remove();
+      return h;
+    });
+  };
+
+  it('待办文字开头按一次退格就去掉复选框（空的、已勾选的、Ctrl+退格都一样）', async () => {
+    assert.equal(await run('<div>xyz</div>' + T('abc'), ['.todo', 0, 'textStart'], ['Backspace']), '<div>xyz</div><div>|abc</div>');
+    assert.equal(await run('<div>xyz</div>' + T(''), ['.todo', 0, 'textStart'], ['Backspace']), '<div>xyz</div><div>|<br></div>');
+    assert.equal(await run('<div>xyz</div>' + T('abc', 1), ['.todo', 0, 'textStart'], ['Backspace']), '<div>xyz</div><div>|abc</div>');
+    assert.equal(await run('<div>xyz</div>' + T('abc'), ['.todo', 0, 'textStart'], ['Control+Backspace']), '<div>xyz</div><div>|abc</div>');
+    assert.equal(await run('<div>xyz</div>' + T('ab'), ['.todo', 0, 'end'], ['Backspace', 'Backspace', 'Backspace']), '<div>xyz</div><div>|<br></div>');
+  });
+
+  it('上一行行尾按 Delete：把下一行待办的文字接过来，不留半截待办', async () => {
+    assert.equal(await run('<div>xyz</div>' + T('abc'), ['div', 0, 'end'], ['Delete']), '<div>xyz|abc</div>');
+    assert.equal(await run(T('abc') + T('def'), ['.todo', 0, 'end'], ['Delete']), '<div.t>[]_abc|def</div>');
+    assert.equal(await run('<div><br></div>' + T('abc'), ['div', 0, 'start'], ['Delete']), '<div>|abc</div>');
+  });
+
+  it('← 在待办文字开头跳到上一行末尾；Shift+Home 不选中复选框', async () => {
+    assert.equal(await run('<div>xyz</div>' + T('abc'), ['.todo', 0, 'textStart'], ['ArrowLeft', 'q']), '<div>xyzq|</div><div.t>[]_abc</div>');
+    assert.equal(await run(T('abc'), ['.todo', 0, 'end'], ['Shift+Home', 'q']), '<div.t>[]_q|</div>');
+  });
+
+  it('退格后可以撤销', async () => {
+    assert.equal(await run('<div>xyz</div>' + T('abc'), ['.todo', 0, 'textStart'], ['Backspace', 'Control+z']), '<div>xyz</div><div.t>[]_|abc</div>');
+  });
+
+  it('列表项开头按退格：去掉圆点 / 编号，文字留在原来那行；嵌套的先退一级', async () => {
+    assert.equal(await run('<ul><li>abc</li></ul>', ['li', 0, 'start'], ['Backspace']), '<div>|abc</div>');
+    assert.equal(await run('<ul><li>abc</li><li>def</li><li>ghi</li></ul>', ['li', 1, 'start'], ['Backspace']), '<ul><li>abc</li></ul><div>|def</div><ul><li>ghi</li></ul>');
+    assert.equal(await run('<div>xyz</div><ol><li>abc</li></ol>', ['li', 0, 'start'], ['Backspace']), '<div>xyz</div><div>|abc</div>');
+    assert.equal(await run('<ul><li>abc<ul><li>def</li></ul></li></ul>', ['li', 1, 'start'], ['Backspace']), '<ul><li>abc</li><li>|def</li></ul>');
+  });
+
+  it('Ctrl+Shift+8 / 7 切换圆点 / 编号列表', async () => {
+    assert.equal(await run('<div>abc</div>', ['div', 0, 'end'], ['Control+Shift+Digit8']), '<ul><li>abc|</li></ul>');
+    assert.equal(await run('<div>abc</div>', ['div', 0, 'end'], ['Control+Shift+Digit7']), '<ol><li>abc|</li></ol>');
+  });
+
+  it('设置里显示便笺实际保存的完整路径', async () => {
+    await t.page.click('#btn-settings');
+    assert.equal(await t.page.textContent('#sm-datadir'), t.dir);
+    assert.equal(await t.page.textContent('#sm-datadir-kind'), '这台电脑的默认位置');
+    await t.page.keyboard.press('Escape');
+  });
+});

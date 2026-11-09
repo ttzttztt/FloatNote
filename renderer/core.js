@@ -38,6 +38,8 @@ const el = {
   smDataDir: document.getElementById('sm-datadir'),
   smDataDirChange: document.getElementById('sm-datadir-change'),
   smDataDirReset: document.getElementById('sm-datadir-reset'),
+  smDataDirKind: document.getElementById('sm-datadir-kind'),
+  smDataDirOpen: document.getElementById('sm-datadir-open'),
   smUpdate: document.getElementById('sm-update'),
   toolbar: document.getElementById('toolbar'),
   switcher: document.getElementById('note-switcher'),

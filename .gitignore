@@ -4,7 +4,8 @@ node_modules/
 # 构建产物
 dist/
 out/
-build/
+build/*
+!build/installer.nsh
 
 # 日志与系统文件
 *.log
