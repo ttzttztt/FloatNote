@@ -181,12 +181,15 @@ el.btnSettings.addEventListener('click', async () => {
 /* ============ 数据位置：可放到 OneDrive / 坚果云等同步文件夹，多台电脑共用便笺 ============ */
 async function showDataDir() {
   const { dir, isDefault } = await window.api.getDataDir();
-  el.smDataDir.textContent = isDefault ? '默认位置' : dir.split(/[\\/]/).filter(Boolean).slice(-2).join('/');
-  el.smDataDir.title = dir + '\n点击打开文件夹';
+  el.smDataDir.textContent = dir; // 显示完整路径：这就是便笺现在实际保存的地方
+  el.smDataDir.title = '点击打开这个文件夹';
+  el.smDataDirKind.textContent = isDefault ? '这台电脑的默认位置' : '自选文件夹';
   el.smDataDirReset.hidden = isDefault;
 }
 
-el.smDataDir.addEventListener('click', (e) => { e.stopPropagation(); window.api.openDataDir(); });
+for (const b of [el.smDataDir, el.smDataDirOpen]) {
+  b.addEventListener('click', (e) => { e.stopPropagation(); window.api.openDataDir(); });
+}
 for (const [btn, fn] of [[el.smDataDirChange, 'pickDataDir'], [el.smDataDirReset, 'resetDataDir']]) {
   btn.addEventListener('click', async (e) => {
     e.stopPropagation();

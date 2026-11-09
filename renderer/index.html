@@ -127,12 +127,15 @@
     <label class="pm-row"><span>鼠标移开时隐藏工具栏</span><input type="checkbox" id="sm-autohide" checked></label>
     <label class="pm-row main-only"><span>拖到屏幕边缘时贴边收起</span><input type="checkbox" id="sm-dock" checked></label>
     <label class="pm-row main-only"><span>开机自动启动</span><input type="checkbox" id="sm-autolaunch"></label>
-    <div class="pm-row main-only pm-datadir"><span>数据位置</span>
-      <span class="datadir-ctl">
-        <button class="datadir-path" id="sm-datadir" title="打开数据文件夹"></button>
-        <button class="hotkey-btn" id="sm-datadir-change" title="放到 OneDrive、坚果云等同步文件夹里，多台电脑就能共用便笺">更改…</button>
-        <button class="hotkey-btn" id="sm-datadir-reset" title="改回默认位置">默认</button>
-      </span>
+    <!-- 便笺现在实际保存在哪个文件夹（不是下载位置） -->
+    <div class="pm-datadir main-only">
+      <div class="pm-row"><span>便笺保存在</span><span class="pm-hint" id="sm-datadir-kind"></span></div>
+      <button class="datadir-path" id="sm-datadir" title="点击打开这个文件夹"></button>
+      <div class="datadir-actions">
+        <button class="hotkey-btn" id="sm-datadir-open">打开文件夹</button>
+        <button class="hotkey-btn" id="sm-datadir-change" title="选一个 OneDrive、坚果云等同步文件夹，便笺会搬过去，多台电脑就能共用">换到同步文件夹…</button>
+        <button class="hotkey-btn" id="sm-datadir-reset" title="搬回这台电脑上的默认位置">改回默认</button>
+      </div>
     </div>
     <div class="pm-row main-only"><span>版本 <span class="pm-version" id="sm-version"></span></span><button class="hotkey-btn" id="sm-update"></button></div>
     <div class="pm-sep"></div>
@@ -146,7 +149,8 @@
       <div class="pm-row"><span>缩进 / 取消缩进</span><span class="pm-hint">Tab / Shift + Tab</span></div>
       <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
       <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
-      <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
+      <div class="pm-row"><span>圆点 / 编号列表</span><span class="pm-hint">Ctrl + Shift + 8 / 7</span></div>
+      <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首输入 [] - 1. # 再按空格</span></div>
       <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
       <div class="pm-row"><span>撤销 / 重做</span><span class="pm-hint">Ctrl + Z / Ctrl + Y</span></div>
       <div class="pm-row"><span>粘贴纯文本</span><span class="pm-hint">Ctrl + Shift + V</span></div>

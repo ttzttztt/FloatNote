@@ -1049,20 +1049,26 @@ body.ctrl-held .editor a { cursor: pointer; text-decoration-color: currentColor;
 .hotkey-btn.ready { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* ============ 设置：数据位置 ============ */
-.pm-datadir { align-items: flex-start; }
-.datadir-ctl { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.pm-datadir { margin: 7px 0; }
+.pm-datadir .pm-row { margin: 0 0 4px; }
+/* 完整路径：可能很长，允许折行；点击打开文件夹 */
 .datadir-path {
-  border: none;
-  background: transparent;
-  font: inherit;
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--field);
+  font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
-  color: var(--muted);
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  color: var(--text);
+  text-align: left;
+  word-break: break-all;
+  white-space: normal;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 4px 7px;
 }
-.datadir-path:hover { color: var(--accent-text); text-decoration: underline; }
-.datadir-ctl .hotkey-btn[hidden] { display: none; }
+.datadir-path:hover { border-color: var(--accent); color: var(--accent-text); }
+.datadir-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.datadir-actions .hotkey-btn[hidden] { display: none; }
