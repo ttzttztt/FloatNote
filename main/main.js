@@ -37,6 +37,8 @@ function registerImageProtocol() {
 
 const GUTTER = 14; // 卡片四周留给投影的透明边距（与 styles.css 的 --gutter 一致）
 const INDEX_HTML = path.join(__dirname, '..', 'renderer', 'index.html');
+const ASSETS = path.join(__dirname, '..', 'assets');
+const APP_ICON = path.join(ASSETS, process.platform === 'win32' ? 'icon.ico' : 'icon-256.png');
 
 let tray = null;
 let isQuitting = false;
@@ -684,7 +686,7 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
     skipTaskbar: true,
     hasShadow: false,
     show: false,
-    icon: path.join(__dirname, '..', 'assets', 'icon-256.png'),
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -1359,7 +1361,8 @@ function installUpdate() {
 
 /* ============ 托盘 ============ */
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'icon-32.png'));
+  // Windows 用 .ico：里面有 16–256 各尺寸单独渲染的图，系统按显示缩放挑最清晰的那张
+  const icon = nativeImage.createFromPath(process.platform === 'win32' ? APP_ICON : path.join(ASSETS, 'icon-32.png'));
   tray = new Tray(icon);
   tray.setToolTip('FloatNote 便签');
   rebuildTrayMenu();

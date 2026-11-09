@@ -169,7 +169,8 @@ renderer/app.js    启动流程
 renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
 scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
 tests/             端到端测试（Playwright 驱动真实 Electron）
-assets/icon-*.png  应用与托盘图标
+assets/icon.svg    图标源文件（48px 及以上用）；icon-small.svg 为 16–32px 简化版（托盘 / 任务栏）
+assets/icon-*.png  各尺寸单独渲染的图标；icon.ico 打包了 16–256 各尺寸，供 Windows 使用
 ```
 
 ## 已知限制
