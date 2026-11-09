@@ -510,12 +510,7 @@ el.switcher.addEventListener('click', (e) => {
   if (e.detail > 1) return; // 双击的第二下交给 dblclick（重命名）
   if (IS_STICKY) return; // 桌面便笺只有一张，没有切换菜单
   if (el.switcherMenu.classList.contains('hidden')) {
-    closeMenus();
-    saveCurrentContent();
-    buildSwitcherMenu();
-    openMenu(el.switcherMenu, el.switcher, 'left');
-    el.switcher.setAttribute('aria-expanded', 'true');
-    menuSearch.focus();
+    openSwitcher();
   } else {
     closeMenus();
   }
@@ -534,7 +529,11 @@ el.btnDelete.addEventListener('click', () => {
   deleteNote();
 });
 
-/* 在标签栏打开输入框（快捷键 Ctrl+Shift+L 触发） */
+/* 工具栏「待办」：按下时不抢走编辑器的焦点和选区，否则就不知道要转换哪几行了 */
+el.btnTodo.addEventListener('mousedown', (e) => e.preventDefault());
+el.btnTodo.addEventListener('click', () => { closeMenus(); toggleTodo(); });
+
+/* 在标签栏打开输入框（「＋ 标签」、这张便笺的菜单、Ctrl+Shift+L） */
 function openTagInput() {
   if (el.tagBar.querySelector('.tag-input')) {
     el.tagBar.querySelector('.tag-input').focus();
@@ -543,19 +542,51 @@ function openTagInput() {
   const input = document.createElement('input');
   input.className = 'tag-input';
   input.placeholder = '标签名，回车确认';
+  input.maxLength = 20;
+  el.tagBar.classList.add('adding');
   el.tagBar.appendChild(input);
   input.focus();
-  const commit = () => {
-    const v = input.value.trim();
-    if (v) addTag(v);
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim().replace(/^#+/, '');
     input.remove();
+    el.tagBar.classList.remove('adding');
+    if (save && v) addTag(v);
   };
+  const commit = () => finish(true);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    else if (e.key === 'Escape') { e.preventDefault(); input.remove(); }
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); el.editor.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); el.editor.focus(); }
   });
   input.addEventListener('blur', commit);
 }
+
+/* 打开切换菜单（Ctrl+F 时直接定位到搜索框） */
+function openSwitcher() {
+  if (IS_STICKY) return; // 桌面便笺只有一张，没有切换菜单
+  closeMenus();
+  saveCurrentContent();
+  buildSwitcherMenu();
+  openMenu(el.switcherMenu, el.switcher, 'left');
+  el.switcher.setAttribute('aria-expanded', 'true');
+  menuSearch.focus();
+}
+
+/* 窗口内快捷键：Ctrl+N 新建、Ctrl+F 搜索 */
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod || e.shiftKey || e.altKey || e.repeat) return;
+  const key = e.key.toLowerCase();
+  if (key === 'n' && !IS_STICKY) { e.preventDefault(); closeMenus(); newNote(); }
+  else if (key === 'f' && !IS_STICKY) {
+    e.preventDefault();
+    if (el.switcherMenu.classList.contains('hidden') || !menuSearch) openSwitcher();
+    else { menuSearch.focus(); menuSearch.select(); }
+  }
+});
 
 /* 全局编辑快捷键：待办 / 标签 / 粘贴图片 */
 document.addEventListener('keydown', (e) => {

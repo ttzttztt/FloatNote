@@ -5,7 +5,7 @@
 
 /* ============ 初始化 ============ */
 async function init() {
-  const [data, ctx] = await Promise.all([window.api.loadData(), window.api.getContext()]);
+  const [data, ctx, hk] = await Promise.all([window.api.loadData(), window.api.getContext(), window.api.getHotkey()]);
   state.notes = (data.notes || []).map(n => Object.assign({}, n));
   state.settings = Object.assign({}, data.settings);
   state.stuck = new Set((ctx && ctx.stickies) || []);
@@ -16,12 +16,14 @@ async function init() {
     if (!currentNote()) { window.api.closeSticky(STICKY_ID); return; }
     stickyOnTop = !!(ctx && ctx.onTop);
     el.btnPin.classList.toggle('active', stickyOnTop);
-    el.btnPin.title = '桌面便笺置顶';
+    el.btnPin.title = '置顶这张桌面便笺（总在其他窗口上方）';
     el.btnClose.title = '放回便笺本';
     el.btnClose.setAttribute('aria-label', '放回便笺本');
     el.switcher.title = '双击重命名（F2）';
   } else {
-    if (!state.notes.length) state.notes.push(blankNote());
+    // 第一次打开（一张便笺都没有）：放一张欢迎便笺；之后清空了也只给空白便笺
+    if (!state.notes.length) state.notes.push(state.settings.welcomed ? blankNote() : welcomeNote(hk));
+    state.settings.welcomed = true;
     const saved = state.settings.activeNoteId;
     const usable = (id) => id && liveNotes().some(n => n.id === id) && !state.stuck.has(id);
     state.activeId = usable(saved) ? saved : (liveNotes().find(n => !state.stuck.has(n.id)) || (() => {
@@ -46,7 +48,6 @@ async function init() {
   });
 
   applySettings();
-  const hk = await window.api.getHotkey();
   showHotkeys(hk);
 
   loadActiveNote();

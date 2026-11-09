@@ -27,18 +27,21 @@
           <span class="pill-label" id="note-title">空便笺</span>
           <svg class="pill-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 6.6L8 9.4l2.8-2.8"/></svg>
         </button>
-        <button class="tbtn" id="btn-stick" title="贴到桌面（也可以把菜单里的便笺拖出窗口）" aria-label="贴到桌面">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.2h7.4l2.6 2.6v7H3z"/><path d="M10.4 3.2v2.6H13"/><path d="M6 9.4l2-2 2 2M8 7.4v4"/></svg>
+        <button class="tbtn" id="btn-todo" title="待办：把当前行变成可勾选的待办，再点一次还原（Ctrl + Shift + T）" aria-label="待办">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.6"/><path d="M5.3 8.1l1.9 1.9 3.5-3.7"/></svg>
+        </button>
+        <button class="tbtn" id="btn-note-menu" title="这张便笺：颜色、纸张、重命名、标签、贴到桌面" aria-label="这张便笺的设置" aria-haspopup="menu">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="dot" cx="3.8" cy="8" r="1.15"/><circle class="dot" cx="8" cy="8" r="1.15"/><circle class="dot" cx="12.2" cy="8" r="1.15"/></svg>
         </button>
         <button class="tbtn" id="btn-delete" title="删除当前便笺（可撤销）" aria-label="删除当前便笺">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.4h10.4M6.4 4.4V3.1h3.2v1.3M4.3 4.4l.6 8.2h6.2l.6-8.2M6.6 6.9v3.4M9.4 6.9v3.4"/></svg>
         </button>
       </div>
       <div class="toolbar-right">
-        <button class="tbtn" id="btn-settings" title="设置（透明度/快捷键）" aria-label="设置">
+        <button class="tbtn" id="btn-settings" title="设置" aria-label="设置">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 4.2h11.2M2.4 8h11.2M2.4 11.8h11.2"/><circle cx="6.1" cy="4.2" r="1.5"/><circle cx="10.2" cy="8" r="1.5"/><circle cx="5.2" cy="11.8" r="1.5"/></svg>
         </button>
-        <button class="tbtn" id="btn-pin" title="窗口置顶" aria-label="窗口置顶">
+        <button class="tbtn" id="btn-pin" title="窗口置顶（总在其他窗口上方）" aria-label="窗口置顶">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 2.4h3.8l-.5 3 2 2H4.6l2-2-.5-3z"/><path d="M8 7.4v6.2"/></svg>
         </button>
         <span class="vsep" aria-hidden="true"></span>
@@ -66,17 +69,21 @@
     </div>
   </div>
   <div class="fold-flap" aria-hidden="true"></div>
-  <div class="resize-grip" id="resize-grip" title="拖拽调整大小"></div>
+  <div class="resize-grip" id="resize-grip" data-edge="se" title="拖拽调整大小"></div>
+  <!-- 四条边与四个角都能拖动调整大小（看不见，鼠标移上去会变成调整大小的光标） -->
+  <div class="rz rz-n" data-edge="n"></div><div class="rz rz-s" data-edge="s"></div>
+  <div class="rz rz-w" data-edge="w"></div><div class="rz rz-e" data-edge="e"></div>
+  <div class="rz rz-nw" data-edge="nw"></div><div class="rz rz-ne" data-edge="ne"></div>
+  <div class="rz rz-sw" data-edge="sw"></div>
   </div>
 
   <!-- 便笺切换浮层（替代原生 select，原生下拉列表无法自定义样式） -->
   <div id="switcher-menu" class="menu list hidden" role="menu"></div>
 
-  <!-- 应用设置浮层 -->
-  <div id="settings-menu" class="menu hidden">
-    <div class="pm-title">设置</div>
-    <div class="pm-row"><span>便笺颜色</span>
-      <span class="swatches" id="sm-swatches">
+  <!-- 这张便笺自己的设置（颜色、纸张…），只影响当前便笺 -->
+  <div id="note-menu" class="menu hidden" role="menu">
+    <div class="pm-row"><span>颜色</span>
+      <span class="swatches" id="nm-swatches">
         <button class="swatch" data-theme="glass" title="白玻璃"></button>
         <button class="swatch" data-theme="yellow" title="暖黄便利贴"></button>
         <button class="swatch" data-theme="mint" title="薄荷绿"></button>
@@ -86,7 +93,7 @@
       </span>
     </div>
     <div class="pm-row"><span>纸张</span>
-      <span class="seg" id="sm-paper">
+      <span class="seg" id="nm-paper">
         <button data-paper="plain" title="素纸">素</button>
         <button data-paper="lines" title="横线本">横线</button>
         <button data-paper="grid" title="方格本">方格</button>
@@ -94,6 +101,16 @@
         <button data-paper="fold" title="便利贴折角">折角</button>
       </span>
     </div>
+    <div class="pm-sep"></div>
+    <button class="nm-item" id="nm-rename"><span>重命名</span><span class="pm-hint">F2 / 双击标题</span></button>
+    <button class="nm-item" id="nm-tag"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></button>
+    <button class="nm-item main-only" id="nm-pin"><span id="nm-pin-label">固定在列表最前</span></button>
+    <button class="nm-item main-only" id="nm-stick"><span>贴到桌面</span><span class="pm-hint">也可从列表里拖出窗口</span></button>
+  </div>
+
+  <!-- 应用设置浮层：只放对所有便笺都生效的设置 -->
+  <div id="settings-menu" class="menu hidden">
+    <div class="pm-title">设置</div>
     <div class="pm-row"><span>外观</span>
       <span class="seg" id="sm-appearance">
         <button data-mode="manual" title="始终使用便笺自己的颜色">手动</button>
@@ -121,16 +138,21 @@
     <div class="pm-row"><span>唤起 / 隐藏</span><button class="hotkey-btn" id="sm-hotkey-hint" data-which="toggle" title="点击后按下新的组合键"></button></div>
     <div class="pm-row"><span>快速捕捉</span><button class="hotkey-btn" id="sm-capture-hint" data-which="capture" title="点击后按下新的组合键"></button></div>
     <div class="pm-hotkey-tip" id="sm-hotkey-tip" hidden></div>
-    <div class="pm-row"><span>缩进 / 取消缩进</span><span class="pm-hint">Tab / Shift + Tab</span></div>
-    <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
-    <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
-    <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
-    <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
-    <div class="pm-row"><span>撤销 / 重做</span><span class="pm-hint">Ctrl + Z / Ctrl + Y</span></div>
-    <div class="pm-row"><span>粘贴纯文本</span><span class="pm-hint">Ctrl + Shift + V</span></div>
-    <div class="pm-row"><span>打开链接</span><span class="pm-hint">Ctrl + 单击</span></div>
-    <div class="pm-row"><span>粘贴图片</span><span class="pm-hint">Ctrl + V</span></div>
-    <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标 / 唤起快捷键</span></div>
+    <details class="pm-keys" id="sm-keys">
+      <summary>全部快捷键</summary>
+      <div class="pm-row"><span>新建便笺</span><span class="pm-hint">Ctrl + N</span></div>
+      <div class="pm-row"><span>搜索便笺</span><span class="pm-hint">Ctrl + F</span></div>
+      <div class="pm-row"><span>缩进 / 取消缩进</span><span class="pm-hint">Tab / Shift + Tab</span></div>
+      <div class="pm-row"><span>待办 / 还原</span><span class="pm-hint">Ctrl + Shift + T</span></div>
+      <div class="pm-row"><span>重命名便笺</span><span class="pm-hint">双击标题 / F2</span></div>
+      <div class="pm-row"><span>快捷输入</span><span class="pm-hint">行首 [] - 1. # + 空格</span></div>
+      <div class="pm-row"><span>添加标签</span><span class="pm-hint">Ctrl + Shift + L</span></div>
+      <div class="pm-row"><span>撤销 / 重做</span><span class="pm-hint">Ctrl + Z / Ctrl + Y</span></div>
+      <div class="pm-row"><span>粘贴纯文本</span><span class="pm-hint">Ctrl + Shift + V</span></div>
+      <div class="pm-row"><span>打开链接</span><span class="pm-hint">Ctrl + 单击</span></div>
+      <div class="pm-row"><span>粘贴图片</span><span class="pm-hint">Ctrl + V</span></div>
+      <div class="pm-row"><span>找回窗口</span><span class="pm-hint">托盘图标 / 唤起快捷键</span></div>
+    </details>
   </div>
 
   <script src="life.js"></script>

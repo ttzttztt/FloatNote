@@ -667,10 +667,12 @@ function setCtxBounds(ctx, b) {
   ctx.win.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) });
 }
 
+/* 窗口最小尺寸（含四周用于投影的透明边距） */
+const minSize = (kind) => (kind === 'sticky' ? [240, 180] : [320, 220]);
+
 function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
   const isSticky = kind === 'sticky';
-  const minW = isSticky ? 240 : 320;
-  const minH = isSticky ? 180 : 200;
+  const [minW, minH] = minSize(kind);
   const b = sanitizeBounds(bounds || { width: 700, height: 380 }, minW, minH);
 
   const win = new BrowserWindow({
@@ -1487,12 +1489,26 @@ function registerIpc() {
   });
   ipcMain.handle('win:minimize', (e) => { const c = ctxOf(e); if (c) c.win.minimize(); });
   ipcMain.handle('win:close', (e) => { const c = ctxOf(e); if (c) c.win.hide(); });
-  ipcMain.handle('win:resize', (e, { width, height }) => {
+  // 调整大小：开始时记下窗口区域，之后按「从按下到现在的位移」计算；
+  // 拖左边 / 上边时保持右边 / 下边不动，缩到最小尺寸后也不会把窗口推着走
+  ipcMain.handle('win:resizeStart', (e) => {
     const ctx = ctxOf(e);
-    if (!ctx || ctx.collapsed) return;
-    const minW = ctx.kind === 'sticky' ? 240 : 300;
-    const minH = ctx.kind === 'sticky' ? 180 : 260;
-    ctx.size = { width: Math.max(minW, Math.round(width)), height: Math.max(minH, Math.round(height)) };
+    if (ctx && !ctx.collapsed) ctx.resizeFrom = fullBounds(ctx);
+  });
+  ipcMain.handle('win:resizeMove', (e, { edge, dx, dy }) => {
+    const ctx = ctxOf(e);
+    if (!ctx || ctx.collapsed || !ctx.resizeFrom || typeof edge !== 'string') return;
+    const f = ctx.resizeFrom;
+    const [minW, minH] = minSize(ctx.kind);
+    let { x, y, width, height } = f;
+    dx = Math.round(Number(dx) || 0);
+    dy = Math.round(Number(dy) || 0);
+    if (edge.includes('e')) width = Math.max(minW, f.width + dx);
+    if (edge.includes('s')) height = Math.max(minH, f.height + dy);
+    if (edge.includes('w')) { width = Math.max(minW, f.width - dx); x = f.x + f.width - width; }
+    if (edge.includes('n')) { height = Math.max(minH, f.height - dy); y = f.y + f.height - height; }
+    ctx.pos = { x, y };
+    ctx.size = { width, height };
     setCtxBounds(ctx, fullBounds(ctx));
   });
   // 注意：Windows 在非整数缩放（如 150%）下，setPosition 会让窗口尺寸逐次 +1px 漂移，

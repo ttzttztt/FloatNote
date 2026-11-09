@@ -205,6 +205,7 @@ html, body {
 }
 
 .toolbar, .tag-bar, .editor { position: relative; z-index: 1; }
+.tag-bar { z-index: 2; } /* 「＋ 标签」浮在正文上方的空白里，要盖在编辑器上面 */
 
 /* ============ 工具栏 ============ */
 .toolbar {
@@ -327,6 +328,20 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
 }
 .card-wrap:not(:hover) .resize-grip { opacity: 0; }
 
+/* 四边 / 四角的调整大小热区：放在卡片边缘以内，否则落在透明区域会被点击穿透 */
+.rz { position: absolute; z-index: 3; }
+.rz-n, .rz-s { left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.rz-n { top: 0; }
+.rz-s { bottom: 0; right: 22px; }
+.rz-w, .rz-e { top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+.rz-w { left: 0; }
+.rz-e { right: 0; bottom: 22px; }
+.rz-nw, .rz-ne, .rz-sw { width: 12px; height: 12px; }
+.rz-nw { left: 0; top: 0; cursor: nwse-resize; }
+.rz-ne { right: 0; top: 0; cursor: nesw-resize; }
+.rz-sw { left: 0; bottom: 0; cursor: nesw-resize; }
+body.collapsed .rz { display: none; }
+
 /* ============ 标签栏 ============ */
 .tag-bar {
   display: flex;
@@ -335,7 +350,23 @@ body.autohide .card:not(:hover):not(.menu-open):not(:has(.pill-input)) .toolbar 
   padding: 4px 20px 0;
   min-height: 8px;
 }
-.tag-bar:empty { padding: 0; }
+.tag-bar.no-tags:not(.adding) { padding: 0; }
+/* 「＋ 标签」：平时隐藏，鼠标移到便笺上才出现（只改透明度，不会让正文跳动） */
+.tag.tag-add {
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 1px 8px;
+  opacity: .85;
+  transition: opacity .15s;
+}
+.tag.tag-add:hover { background: var(--accent-soft); opacity: 1; }
+.card:not(:hover) .tag-add:not(:focus-visible), .tag-bar.adding .tag-add { opacity: 0; pointer-events: none; }
+/* 没有标签时浮在工具栏和正文之间的空白里，不占一行 */
+.tag-bar.no-tags .tag-add { position: absolute; left: 20px; top: 2px; }
+body.mode-sticky .tag-bar.no-tags .tag-add { left: 16px; top: -2px; }
 .tag {
   display: inline-flex;
   align-items: center;
@@ -505,6 +536,44 @@ body.collapsed .card { outline-color: transparent; }
   background: linear-gradient(90deg, transparent, var(--border), transparent);
 }
 
+/* 设置里折叠起来的「全部快捷键」 */
+.pm-keys { margin-top: 6px; }
+.pm-keys > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 0;
+  list-style: none;
+  user-select: none;
+}
+.pm-keys > summary::-webkit-details-marker { display: none; }
+.pm-keys > summary::before { content: '▸'; display: inline-block; width: 12px; transition: transform .15s; }
+.pm-keys[open] > summary::before { transform: rotate(90deg); }
+.pm-keys > summary:hover { color: var(--text); }
+
+/* ============ 这张便笺的菜单 ============ */
+#note-menu { min-width: 236px; }
+.nm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: calc(100% + 12px);
+  margin: 0 -6px;
+  padding: 6px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.nm-item:hover, .nm-item:focus-visible { background: var(--hover); outline: none; }
+.nm-item .pm-hint { max-width: none; }
+#btn-note-menu .dot { fill: currentColor; stroke: none; }
+
 /* ============ 便笺切换菜单 ============ */
 .menu.list { padding: 6px; min-width: 220px; max-width: 280px; }
 .menu-item {
@@ -536,7 +605,7 @@ body.collapsed .card { outline-color: transparent; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 56px;
+  bottom: calc(var(--gutter) + 5px); /* 落在底部状态栏的位置，不挡正文 */
   transform: translateX(-50%);
   background: rgba(43, 43, 49, .9);
   color: #fff;
@@ -544,6 +613,10 @@ body.collapsed .card { outline-color: transparent; }
   border-radius: 999px;
   font-size: 12px;
   z-index: 99;
+  max-width: calc(100vw - var(--gutter) * 2 - 24px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   animation: toast-in .18s ease-out;
 }
@@ -567,6 +640,7 @@ body.collapsed .card { outline-color: transparent; }
   transition: opacity .2s;
 }
 .status-bar:empty { display: none; }
+body.has-toast .status-bar { visibility: hidden; }
 .card:hover .status-bar { opacity: .9; }
 
 /* ============ 新建 / 切换时的淡入 ============ */
@@ -833,7 +907,6 @@ body.warm .card::after {
 /* ============ 桌面便笺窗口 ============ */
 body.mode-sticky #btn-new,
 body.mode-sticky #btn-delete,
-body.mode-sticky #btn-stick,
 body.mode-sticky #btn-hide,
 body.mode-sticky .vsep,
 body.mode-sticky .pill-caret,

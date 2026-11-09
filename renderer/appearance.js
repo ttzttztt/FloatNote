@@ -20,10 +20,10 @@ function applyTheme(note) {
   const amb = ambient();
   document.body.dataset.theme = amb.dark ? 'dark' : own;
   document.body.classList.toggle('warm', amb.warm && !amb.dark);
-  el.smSwatches.querySelectorAll('.swatch').forEach(b => b.classList.toggle('active', b.dataset.theme === own));
+  el.nmSwatches.querySelectorAll('.swatch').forEach(b => b.classList.toggle('active', b.dataset.theme === own));
   const paper = note && PAPERS.includes(note.paper) ? note.paper : 'plain';
   document.body.dataset.paper = paper;
-  el.smPaper.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.paper === paper));
+  el.nmPaper.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.paper === paper));
 }
 darkQuery.addEventListener('change', () => applyTheme(currentNote()));
 setInterval(() => applyTheme(currentNote()), 60000); // 跟随时间：每分钟检查一次

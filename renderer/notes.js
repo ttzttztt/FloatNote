@@ -22,6 +22,28 @@ function newNote() {
   scheduleSave(100);
 }
 
+/* 第一次打开时的欢迎便笺：用几条待办带用户把主要功能走一遍，勾完删掉即可 */
+function welcomeNote(hk) {
+  const key = (info, fallback) => (info && info.ok && info.acc ? '<strong>' + escapeHtml(formatHotkey(info)) + '</strong>' : fallback);
+  const toggle = key(hk, '唤起快捷键');
+  const capture = key(hk && hk.capture, '快速捕捉快捷键');
+  const todo = (html) => `<div class="todo"><input type="checkbox">\u00a0${html}</div>`;
+  const note = blankNote();
+  note.title = '欢迎使用 FloatNote';
+  note.content = [
+    '<div>你好！这是一张便笺，写下的内容会自动保存。跟着下面几步熟悉一下，做完一件就勾掉一件：</div>',
+    todo(`在任何程序里按 ${toggle}，隐藏或唤回这个窗口`),
+    todo('点工具栏上的「待办」按钮，把一行文字变成可以勾选的待办'),
+    todo('点「⋯」给这张便笺换个颜色、换种纸张'),
+    todo('把窗口拖到屏幕左边或右边，它会收成一条细边，鼠标移过去就展开'),
+    todo(`在浏览器里选中一段文字，按 ${capture}，它会被收进当前便笺`),
+    todo('点「⋯」→「贴到桌面」，把一张便笺单独贴在桌面上'),
+    '<div><br></div>',
+    '<div>右上角「设置」里可以改快捷键、透明度、数据位置，还有全部快捷键的说明。看完点垃圾桶删掉这张就好。</div>'
+  ].join('');
+  return note;
+}
+
 /* 删除立即生效，5 秒内可从提示条撤销（图片文件不会被删，撤销后照常显示） */
 function deleteNote() {
   saveCurrentContent();

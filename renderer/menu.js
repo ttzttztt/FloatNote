@@ -1,6 +1,6 @@
 'use strict';
 
-/* menu.js —— 标题、切换菜单（搜索 / 置顶 / 排序 / 最近删除）、重命名、标签、提示条
+/* menu.js —— 标题、切换菜单（搜索 / 固定 / 排序 / 最近删除）、重命名、标签、提示条
    各脚本是同一页面里的普通 <script>，顶层声明互相可见；按 index.html 中的顺序加载。 */
 
 /* ============ 渲染 ============ */
@@ -15,9 +15,10 @@ const PENCIL_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3
 
 const STICK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.2h7.4l2.6 2.6v7H3z"/><path d="M10.4 3.2v2.6H13"/><path d="M6 9.4l2-2 2 2M8 7.4v4"/></svg>';
 
-const PIN_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 2.4h3.8l-.5 3 2 2H4.6l2-2-.5-3z"/><path d="M8 7.4v6.2"/></svg>';
+/* 「固定在列表最前」用星标，和工具栏上的「窗口置顶」图钉区分开 */
+const STAR_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.3l1.7 3.5 3.8.5-2.8 2.7.7 3.8L8 11l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5z"/></svg>';
 
-/* 菜单显示顺序：置顶的在前，各组内保持数组顺序 */
+/* 菜单显示顺序：固定的在前，各组内保持数组顺序（数据字段沿用 pinned） */
 function displayOrder() {
   const live = liveNotes();
   return [...live.filter(n => n.pinned), ...live.filter(n => !n.pinned)];
@@ -161,7 +162,7 @@ function renderMenuItems() {
       (sub ? `<span class="mi-sub">${escapeHtml(sub)}</span>` : '') + `</span>` +
       (stuck ? `<span class="mi-badge" title="已贴在桌面上，点击把它叫到前面">桌面</span>` : `<span class="mi-time">${relativeTime(n.updatedAt)}</span>`) +
       (stuck ? '' : `<button class="mi-btn mi-stick" title="贴到桌面" aria-label="贴到桌面">${STICK_SVG}</button>`) +
-      `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? '取消置顶' : '置顶此便笺'}" aria-label="置顶">${PIN_SVG}</button>` +
+      `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? '取消固定' : '固定在列表最前'}" aria-label="${n.pinned ? '取消固定' : '固定在列表最前'}">${STAR_SVG}</button>` +
       `<button class="mi-btn mi-rename" title="重命名" aria-label="重命名">${PENCIL_SVG}</button>`;
 
     const go = () => {
@@ -238,7 +239,7 @@ function renderMenuItems() {
   });
 }
 
-/* 把 srcId 移到 targetId 前/后；跨组拖动时跟随目标的置顶状态 */
+/* 把 srcId 移到 targetId 前/后；跨组拖动时跟随目标是否固定 */
 function moveNote(srcId, targetId, before) {
   if (srcId === targetId) return;
   const order = displayOrder();
@@ -304,18 +305,36 @@ function renderTags() {
     chip.addEventListener('click', () => removeTag(tag));
     el.tagBar.appendChild(chip);
   });
+  // 「＋ 标签」：鼠标移到便笺上才显示；没有标签时浮在正文上方的空白里，不占行
+  const add = document.createElement('button');
+  add.className = 'tag tag-add';
+  add.textContent = '＋ 标签';
+  add.title = '添加标签（Ctrl + Shift + L）';
+  add.addEventListener('click', (e) => { e.stopPropagation(); openTagInput(); });
+  el.tagBar.appendChild(add);
+  el.tagBar.classList.toggle('no-tags', !(note.tags || []).length);
 }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/* 提示条显示在便笺底部状态栏的位置（不挡正文），显示期间先把状态栏藏起来 */
+function syncToastState() {
+  document.body.classList.toggle('has-toast', !!document.querySelector('.toast'));
+}
+function showToast(t, ms) {
+  document.body.appendChild(t);
+  syncToastState();
+  return setTimeout(() => { t.remove(); syncToastState(); }, ms);
+}
+
 function toast(msg) {
+  document.querySelectorAll('.toast:not(.action)').forEach(t => t.remove());
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 1600);
+  showToast(t, 1600);
 }
 
 /* 带操作按钮的提示条（同一时间只保留一个） */
@@ -329,14 +348,15 @@ function toastAction(msg, label, onAction, ms = 5000) {
   btn.className = 'toast-btn';
   btn.textContent = label;
   t.append(text, btn);
-  const timer = setTimeout(() => t.remove(), ms);
+  document.querySelectorAll('.toast:not(.action)').forEach(x => x.remove());
+  const timer = showToast(t, ms);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     clearTimeout(timer);
     t.remove();
+    syncToastState();
     onAction();
   });
-  document.body.appendChild(t);
 }
 
 function addTag(tag) {

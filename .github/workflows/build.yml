@@ -61,13 +61,35 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 打包（推送标签时同时上传到草稿 Release；GitHub 下载偶尔超时，失败重试一次）
+      # 缓存 Electron 与打包工具（NSIS 等）：下载过一次就不再依赖 GitHub 下载
+      - name: 缓存 Electron 与打包工具
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: eb-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: eb-${{ runner.os }}-
+      # GitHub 的 Release 下载偶尔返回 502 / 504：前两次用 GitHub，第三次改用 npmmirror 镜像兜底
+      - name: 打包（推送标签时同时上传到草稿 Release）
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           P="${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}"
-          pnpm dist -- --publish "$P" || { echo "打包失败，30 秒后重试一次"; sleep 30; pnpm dist -- --publish "$P"; }
+          for i in 1 2 3; do
+            if [ "$i" = 3 ]; then
+              echo "改用 npmmirror 镜像下载"
+              export npm_config_electron_mirror=https://npmmirror.com/mirrors/electron/
+              export npm_config_electron_custom_dir='{{ version }}'
+              export npm_config_electron_builder_binaries_mirror=https://npmmirror.com/mirrors/electron-builder-binaries/
+            fi
+            pnpm dist -- --publish "$P" && exit 0
+            echo "第 $i 次打包失败"; sleep $((i * 30))
+          done
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: FloatNote-${{ matrix.name }}

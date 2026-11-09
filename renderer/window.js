@@ -15,8 +15,6 @@ el.btnClose.addEventListener('click', () => {
   }
 });
 
-el.btnStick.addEventListener('click', () => { closeMenus(); stickNote(state.activeId); });
-
 let stickyOnTop = true; // 桌面便笺各自记住是否置顶
 el.btnPin.addEventListener('click', async () => {
   if (IS_STICKY) {
@@ -31,7 +29,7 @@ el.btnPin.addEventListener('click', async () => {
   scheduleSave(100);
 });
 
-/* ============ 浮层（设置 / 便笺切换） ============ */
+/* ============ 浮层（设置 / 这张便笺 / 便笺切换） ============ */
 /* 弹层锚定在触发按钮下沿，并限制在便笺卡片范围内；align 决定与按钮左对齐还是右对齐 */
 function openMenu(menu, btn, align = 'right') {
   menu.classList.remove('hidden');
@@ -51,25 +49,42 @@ function openMenu(menu, btn, align = 'right') {
   menu.style.right = 'auto';
 }
 
+const MENUS = [el.settingsMenu, el.noteMenu, el.switcherMenu];
+
 function closeMenus() {
   el.settingsMenu.classList.add('hidden');
+  el.noteMenu.classList.add('hidden');
   el.switcherMenu.classList.add('hidden');
   el.switcher.setAttribute('aria-expanded', 'false');
   if (el.card.classList.contains('menu-open')) window.api.setMenuOpen(false);
   el.card.classList.remove('menu-open');
 }
 
+/* 点按钮开关浮层；同一时间只开一个 */
+function toggleMenu(menu, btn, align) {
+  if (menu.classList.contains('hidden')) {
+    closeMenus();
+    openMenu(menu, btn, align);
+    return true;
+  }
+  closeMenus();
+  return false;
+}
+
 el.btnSettings.addEventListener('click', (e) => {
   e.stopPropagation();
-  if (el.settingsMenu.classList.contains('hidden')) {
-    closeMenus();
-    openMenu(el.settingsMenu, el.btnSettings);
-  } else {
-    closeMenus();
+  toggleMenu(el.settingsMenu, el.btnSettings);
+});
+el.btnNoteMenu.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (el.noteMenu.classList.contains('hidden')) {
+    const note = currentNote();
+    el.nmPinLabel.textContent = note && note.pinned ? '取消固定' : '固定在列表最前';
   }
+  toggleMenu(el.noteMenu, el.btnNoteMenu, 'left');
 });
 document.addEventListener('click', (e) => {
-  if (el.settingsMenu.contains(e.target) || el.switcherMenu.contains(e.target)) return;
+  if (MENUS.some(m => m.contains(e.target))) return;
   closeMenus();
 });
 document.addEventListener('keydown', (e) => {
@@ -85,7 +100,8 @@ el.smOpacity.addEventListener('input', () => {
 });
 el.smOpacity.addEventListener('change', () => scheduleSave(100));
 
-el.smSwatches.addEventListener('click', (e) => {
+/* ---- 这张便笺：颜色、纸张、重命名、标签、固定、贴到桌面 ---- */
+el.nmSwatches.addEventListener('click', (e) => {
   const b = e.target.closest('.swatch');
   const note = currentNote();
   if (!b || !note) return;
@@ -94,13 +110,29 @@ el.smSwatches.addEventListener('click', (e) => {
   scheduleSave(100);
 });
 
-el.smPaper.addEventListener('click', (e) => {
+el.nmPaper.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   const note = currentNote();
   if (!b || !note) return;
   note.paper = b.dataset.paper === 'plain' ? undefined : b.dataset.paper;
   applyTheme(note);
   scheduleSave(100);
+});
+
+const noteMenuAction = (id, fn) => document.getElementById(id).addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeMenus();
+  fn(currentNote());
+});
+noteMenuAction('nm-rename', () => startRename());
+noteMenuAction('nm-tag', () => openTagInput());
+noteMenuAction('nm-stick', (note) => { if (note) stickNote(note.id); });
+noteMenuAction('nm-pin', (note) => {
+  if (!note) return;
+  note.pinned = !note.pinned;
+  applyDisplayOrder();
+  scheduleSave(100);
+  toast(note.pinned ? '已固定在列表最前' : '已取消固定');
 });
 
 el.smAppearance.addEventListener('click', (e) => {
@@ -291,6 +323,7 @@ document.querySelectorAll('.hotkey-btn').forEach(btn => {
 /* ============ 自定义拖动（工具栏） ============ */
 let dragState = null;
 let dragging = false;
+let resizing = false;
 
 el.toolbar.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button,select,input,option')) return;
@@ -320,22 +353,31 @@ const endDrag = () => {
 el.toolbar.addEventListener('pointerup', endDrag);
 el.toolbar.addEventListener('pointercancel', endDrag);
 
-/* ============ 调整大小（右下角手柄） ============ */
-el.resizeGrip.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  const startX = e.screenX, startY = e.screenY;
-  const startW = window.innerWidth, startH = window.innerHeight;
-  el.resizeGrip.setPointerCapture(e.pointerId);
-  const onMove = (ev) => {
-    window.api.resize(startW + (ev.screenX - startX), startH + (ev.screenY - startY));
-  };
-  const onUp = () => {
-    el.resizeGrip.removeEventListener('pointermove', onMove);
-    el.resizeGrip.removeEventListener('pointerup', onUp);
-  };
-  el.resizeGrip.addEventListener('pointermove', onMove);
-  el.resizeGrip.addEventListener('pointerup', onUp);
+/* ============ 调整大小：四条边、四个角都能拖 ============
+   主进程记下开始时的窗口位置和大小，这里只发「从按下到现在移动了多少」，
+   拖左边 / 上边时窗口的右边 / 下边保持不动。 */
+document.querySelectorAll('[data-edge]').forEach(handle => {
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const edge = handle.dataset.edge;
+    const startX = e.screenX, startY = e.screenY;
+    handle.setPointerCapture(e.pointerId);
+    resizing = true;
+    window.api.resizeStart();
+    const onMove = (ev) => window.api.resizeMove(edge, ev.screenX - startX, ev.screenY - startY);
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      resizing = false;
+      recomputeIgnore();
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  });
 });
 
 /* ============ 透明区域点击穿透管理 ============ */
@@ -355,7 +397,7 @@ function recomputeIgnore() {
 document.addEventListener('mousemove', (e) => {
   mouseX = e.clientX;
   mouseY = e.clientY;
-  if (!dragging) recomputeIgnore();
+  if (!dragging && !resizing) recomputeIgnore();
 });
 
 function formatHotkey(info) {
@@ -418,13 +460,3 @@ function appendCapture(c) {
   persist();
   if (!document.hidden) toast('已捕捉到「' + noteTitle(note) + '」');
 }
-
-function formatHotkey(info) {
-  if (!info || !info.acc) return '未注册';
-  const acc = String(info.acc)
-    .replace('CommandOrControl', 'Ctrl')
-    .replace('Control', 'Ctrl')
-    .replace('Command', 'Cmd');
-  return info.ok ? acc : acc + '（注册失败，可能被占用）';
-}
-

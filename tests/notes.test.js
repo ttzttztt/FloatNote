@@ -77,9 +77,11 @@ describe('便笺管理与界面', () => {
   });
 
   it('设置：颜色、纸张、字号、外观跟随', async () => {
-    const pick = async (sel) => { await t.page.click('#btn-settings'); await t.page.click(sel); await t.page.keyboard.press('Escape'); };
-    await pick('#sm-swatches [data-theme=kraft]');
-    await pick('#sm-paper [data-paper=fold]');
+    // 颜色、纸张只影响当前便笺，在「⋯」里；设置里只有全局选项
+    const pick = async (sel) => { await t.page.click('#btn-note-menu'); await t.page.click(sel); await t.page.keyboard.press('Escape'); };
+    await pick('#nm-swatches [data-theme=kraft]');
+    await pick('#nm-paper [data-paper=fold]');
+    assert.equal(await t.page.locator('#settings-menu .swatch').count(), 0);
     assert.equal(await t.page.evaluate(() => document.body.dataset.theme), 'kraft');
     assert.equal(await t.page.evaluate(() => document.body.dataset.paper), 'fold');
     await t.page.click('#btn-settings');
