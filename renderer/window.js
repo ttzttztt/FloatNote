@@ -145,6 +145,59 @@ el.btnSettings.addEventListener('click', async () => {
   if (!IS_STICKY) el.smAutoLaunch.checked = await window.api.getAutoLaunch();
 });
 
+/* ============ 数据位置：可放到 OneDrive / 坚果云等同步文件夹，多台电脑共用便笺 ============ */
+async function showDataDir() {
+  const { dir, isDefault } = await window.api.getDataDir();
+  el.smDataDir.textContent = isDefault ? '默认位置' : dir.split(/[\\/]/).filter(Boolean).slice(-2).join('/');
+  el.smDataDir.title = dir + '\n点击打开文件夹';
+  el.smDataDirReset.hidden = isDefault;
+}
+
+el.smDataDir.addEventListener('click', (e) => { e.stopPropagation(); window.api.openDataDir(); });
+for (const [btn, fn] of [[el.smDataDirChange, 'pickDataDir'], [el.smDataDirReset, 'resetDataDir']]) {
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    persist(); // 先把没保存的改动交给主进程，再切换
+    const r = await window.api[fn]();
+    if (r && r.ok === false && r.error) toast(r.error);
+    // 成功时主进程会重新加载所有窗口
+  });
+}
+
+/* ============ 版本与自动更新 ============ */
+const UPDATE_LABEL = {
+  dev: ['开发版不自动更新', true],
+  portable: ['便携版请手动下载新版本', true],
+  unsupported: ['此安装方式不支持自动更新', true],
+  idle: ['检查更新', false],
+  latest: ['已是最新版本', false],
+  checking: ['正在检查…', true],
+  error: ['检查失败，点击重试', false]
+};
+let readyToastShown = false;
+
+function showUpdateState(st) {
+  if (!st) return;
+  let [label, disabled] = UPDATE_LABEL[st.status] || ['检查更新', false];
+  if (st.status === 'downloading') { label = `正在下载 v${st.version} · ${st.percent || 0}%`; disabled = true; }
+  if (st.status === 'ready') { label = `重启更新到 v${st.version}`; disabled = false; }
+  el.smUpdate.textContent = label;
+  el.smUpdate.disabled = disabled;
+  el.smUpdate.title = st.status === 'error' ? (st.error || '') : '';
+  el.smUpdate.classList.toggle('ready', st.status === 'ready');
+  if (st.status === 'ready' && !readyToastShown && !IS_STICKY) {
+    readyToastShown = true;
+    toastAction(`新版本 v${st.version} 已下载`, '重启更新', () => window.api.installUpdate(), 15000);
+  }
+}
+
+el.smUpdate.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const st = await window.api.getUpdateState();
+  if (st.status === 'ready') window.api.installUpdate();
+  else showUpdateState(await window.api.checkForUpdate());
+});
+
 /* ============ 自定义快捷键：点按钮后按下新的组合键 ============ */
 let hotkeyState = null;
 

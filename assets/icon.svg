@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- FloatNote 图标（完整版，48px 及以上）：深色圆角底板上，一张微微倾斜、浮起来的黄色折角便笺 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A3B46"/><stop offset="1" stop-color="#1E1F26"/></linearGradient>
+    <linearGradient id="y" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE48A"/><stop offset="1" stop-color="#FFC23F"/></linearGradient>
+    <filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".55"/></filter>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#bg)"/>
+  <ellipse cx="128" cy="206" rx="62" ry="9" fill="#000" opacity=".28"/>
+  <g transform="rotate(-8 128 124)" filter="url(#s)">
+    <path d="M74 60 h108 a14 14 0 0 1 14 14 v78 l-44 44 h-78 a14 14 0 0 1 -14 -14 v-108 a14 14 0 0 1 14 -14 z" fill="url(#y)"/>
+    <path d="M196 152 l-44 44 v-30 a14 14 0 0 1 14 -14 z" fill="#C98A12"/>
+    <path d="M87.2 105.12 l13.44 13.44 l22.400000000000002 -25.76" stroke="#2B2B31" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="80" y="146" width="56" height="12" rx="6" fill="#2B2B31" opacity=".35"/>
+  </g>
+</svg>

@@ -185,6 +185,105 @@ el.editor.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---- 待办行的光标位置 ----
+   待办行是弹性布局（复选框和文字对齐），点在行尾右侧空白处时，浏览器会把光标放到整行最前面，
+   也就是复选框前面，打的字也跑到复选框前面去。这里纠正：
+   - 点在文字右侧空白处 → 光标放到文字末尾
+   - 光标落在复选框前面（点击、Home、方向键都可能）→ 挪到复选框后面 */
+function setCaret(node, offset) {
+  const r = document.createRange();
+  r.setStart(node, offset);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+/* 复选框后面那个空格之后 */
+function caretAfterCheckbox(line) {
+  const cb = lineCheckbox(line);
+  const sp = cb && cb.nextSibling;
+  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) setCaret(sp, 1);
+  else if (cb) setCaret(line, Array.prototype.indexOf.call(line.childNodes, cb) + 1);
+}
+
+/* 这一行文字的末尾（最后一个文本节点的结尾；没有文字就放在复选框后面） */
+function caretLineEnd(line) {
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let last = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n;
+  if (last) setCaret(last, last.length);
+  else caretAfterCheckbox(line);
+}
+
+/* 光标是否在“复选框 + 后面的空格”之前（在复选框前面，或夹在复选框和空格之间） */
+function caretBeforeCheckbox(line) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const cb = lineCheckbox(line);
+  if (!cb) return false;
+  const caret = document.createRange();
+  caret.setStart(sel.anchorNode, sel.anchorOffset);
+  const textStart = document.createRange();
+  const sp = cb.nextSibling;
+  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) textStart.setStart(sp, 1);
+  else textStart.setStartAfter(cb);
+  return caret.compareBoundaryPoints(Range.START_TO_START, textStart) < 0;
+}
+
+/* 在按下鼠标的那一刻就接管：如果等浏览器先把光标放到行首、点击结束后再挪，会看到光标从头跳到尾。
+   只处理点在待办行空白处（文字右侧，或复选框与文字之间）；点文字、点复选框、双击、Shift 点击都交给浏览器 */
+el.editor.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || e.detail > 1 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const line = e.target && e.target.closest && e.target.closest('.todo');
+  if (!line || e.target !== line || !el.editor.contains(line) || !lineCheckbox(line)) return;
+  const r = document.createRange();
+  r.selectNodeContents(line);
+  const rects = [...r.getClientRects()].filter(x => x.width || x.height);
+  const textRight = rects.length ? Math.max(...rects.map(x => x.right)) : 0;
+  const cbRect = lineCheckbox(line).getBoundingClientRect();
+  const toEnd = e.clientX >= textRight - 1;
+  const toStart = !toEnd && e.clientX > cbRect.right && e.clientX < cbRect.right + 12;
+  if (!toEnd && !toStart) return;
+  e.preventDefault(); // 不让浏览器自己放光标（它会放到复选框前面）
+  if (document.activeElement !== el.editor) el.editor.focus({ preventScroll: true });
+  if (toEnd) caretLineEnd(line);
+  else caretAfterCheckbox(line);
+});
+
+/* 光标所在的待办行（不在待办行里返回 null） */
+function caretTodoLine() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) return null;
+  const a = sel.anchorNode;
+  const line = (a.nodeType === 1 && a.classList && a.classList.contains('todo')) ? a : (a.nodeType === 3 ? a.parentElement : a).closest('.todo');
+  return line && el.editor.contains(line) && lineCheckbox(line) ? line : null;
+}
+
+// Home：直接放到复选框后面的文字开头（不等 selectionchange，避免紧接着打字时来不及纠正）
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key !== 'Home' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const line = caretTodoLine();
+  if (!line) return;
+  e.preventDefault();
+  caretAfterCheckbox(line);
+});
+
+// 真要输入时再兜底一次：光标还在复选框前面，就先挪到文字开头再输入
+el.editor.addEventListener('beforeinput', (e) => {
+  if (!e.inputType.startsWith('insert') || e.isComposing) return;
+  const line = caretTodoLine();
+  if (line && caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+}, true);
+
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed || !el.editor.contains(sel.anchorNode)) return;
+  const a = sel.anchorNode;
+  const line = (a.nodeType === 1 && a.classList.contains('todo')) ? a : (a.nodeType === 3 ? a.parentElement : a).closest('.todo');
+  if (line && el.editor.contains(line) && caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+});
+
 /* 光标放到正文末尾 */
 function focusEditorEnd() {
   el.editor.focus();
@@ -322,29 +421,71 @@ el.editor.addEventListener('input', (e) => {
   sel.addRange(r);
 });
 
+/* 在光标处插入图片，后面跟一个换行，光标放到图片之后（接着打字在图片下方）；
+   光标不在编辑区里时追加到末尾 */
 function insertImageAtCaret(img) {
   const sel = window.getSelection();
-  if (sel.rangeCount) {
-    const range = sel.getRangeAt(0);
+  let range;
+  if (sel.rangeCount && el.editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    range = sel.getRangeAt(0);
     range.deleteContents();
-    range.insertNode(img);
-    const br = document.createElement('br');
-    range.insertNode(br);
-    range.setStartAfter(br);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
   } else {
-    el.editor.appendChild(img);
+    range = document.createRange();
+    range.selectNodeContents(el.editor);
+    range.collapse(false);
   }
+  const br = document.createElement('br');
+  range.insertNode(br);  // 先插换行，再把图片插到它前面：顺序是 图片 → 换行 → 光标
+  range.insertNode(img);
+  const after = document.createRange();
+  after.setStartAfter(br);
+  after.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(after);
   el.editor.focus();
+}
+
+/* ---- 图片压缩：长边超过 1920 像素就等比缩小，再转成 WebP ----
+   一张 4K 截图原样保存要 5–10MB；压缩后通常只剩几百 KB，便笺里看不出区别。
+   GIF 保持原样（会丢动画）；压缩后反而变大的小图标也保留原图。 */
+const IMAGE_MAX_SIDE = 1920;
+const IMAGE_QUALITY = 0.86;
+
+function dataUrlBytes(dataUrl) {
+  const i = dataUrl.indexOf(',');
+  return Math.floor((dataUrl.length - i - 1) * 3 / 4);
+}
+
+async function compressImage(dataUrl) {
+  if (!/^data:image\/(png|jpe?g|webp|bmp)/i.test(dataUrl)) return dataUrl; // gif 等原样保存
+  try {
+    // 用 <img> 解码：页面的安全策略不允许 fetch(data:)，但允许图片使用 data: 地址
+    const bmp = new Image();
+    bmp.src = dataUrl;
+    await bmp.decode();
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bmp.naturalWidth, bmp.naturalHeight));
+    const w = Math.max(1, Math.round(bmp.naturalWidth * scale));
+    const h = Math.max(1, Math.round(bmp.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w, h);
+    const out = canvas.toDataURL('image/webp', IMAGE_QUALITY);
+    if (!out.startsWith('data:image/webp')) return dataUrl; // 编码失败
+    return scale < 1 || dataUrlBytes(out) < dataUrlBytes(dataUrl) ? out : dataUrl;
+  } catch (e) {
+    console.warn('compressImage', e);
+    return dataUrl;
+  }
 }
 
 async function insertImage(dataUrl) {
   const note = currentNote();
   if (!note) return;
   try {
-    const url = await window.api.saveImage(note.id, dataUrl);
+    const url = await window.api.saveImage(note.id, await compressImage(dataUrl));
     const img = document.createElement('img');
     img.src = url;
     Undo.before();

@@ -85,6 +85,8 @@ function applyRemotePatch(p) {
 
   for (const u of p.upserts || []) {
     let n = state.notes.find(x => x.id === u.id);
+    // 本窗口刚改过、比传来的版本还新（例如正在打字时同步来了另一台电脑的旧内容）：保留本地的
+    if (n && u.set && u.set.updatedAt && (n.updatedAt || 0) > u.set.updatedAt) continue;
     if (!n) { n = { id: u.id }; state.notes.push(n); }
     Object.assign(n, u.set || {});
     (u.unset || []).forEach(k => { delete n[k]; });
