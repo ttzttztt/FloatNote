@@ -185,6 +185,97 @@ el.editor.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---- 待办行的光标位置 ----
+   待办行是弹性布局（复选框和文字对齐），点在行尾右侧空白处时，浏览器会把光标放到整行最前面，
+   也就是复选框前面，打的字也跑到复选框前面去。这里纠正：
+   - 点在文字右侧空白处 → 光标放到文字末尾
+   - 光标落在复选框前面（点击、Home、方向键都可能）→ 挪到复选框后面 */
+function setCaret(node, offset) {
+  const r = document.createRange();
+  r.setStart(node, offset);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+/* 复选框后面那个空格之后 */
+function caretAfterCheckbox(line) {
+  const cb = lineCheckbox(line);
+  const sp = cb && cb.nextSibling;
+  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) setCaret(sp, 1);
+  else if (cb) setCaret(line, Array.prototype.indexOf.call(line.childNodes, cb) + 1);
+}
+
+/* 这一行文字的末尾（最后一个文本节点的结尾；没有文字就放在复选框后面） */
+function caretLineEnd(line) {
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let last = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n;
+  if (last) setCaret(last, last.length);
+  else caretAfterCheckbox(line);
+}
+
+/* 光标是否在“复选框 + 后面的空格”之前（在复选框前面，或夹在复选框和空格之间） */
+function caretBeforeCheckbox(line) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const cb = lineCheckbox(line);
+  if (!cb) return false;
+  const caret = document.createRange();
+  caret.setStart(sel.anchorNode, sel.anchorOffset);
+  const textStart = document.createRange();
+  const sp = cb.nextSibling;
+  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) textStart.setStart(sp, 1);
+  else textStart.setStartAfter(cb);
+  return caret.compareBoundaryPoints(Range.START_TO_START, textStart) < 0;
+}
+
+el.editor.addEventListener('click', (e) => {
+  const line = e.target && e.target.closest && e.target.closest('#editor > .todo, #editor .todo');
+  if (!line || !lineCheckbox(line) || e.target.matches('input')) return;
+  // 点在这一行文字的右侧空白处：放到行尾
+  const r = document.createRange();
+  r.selectNodeContents(line);
+  const rects = [...r.getClientRects()].filter(x => x.width || x.height);
+  const textRight = rects.length ? Math.max(...rects.map(x => x.right)) : 0;
+  if (e.clientX >= textRight - 1) { caretLineEnd(line); return; }
+  if (caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+});
+
+/* 光标所在的待办行（不在待办行里返回 null） */
+function caretTodoLine() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !el.editor.contains(sel.anchorNode)) return null;
+  const a = sel.anchorNode;
+  const line = (a.nodeType === 1 && a.classList && a.classList.contains('todo')) ? a : (a.nodeType === 3 ? a.parentElement : a).closest('.todo');
+  return line && el.editor.contains(line) && lineCheckbox(line) ? line : null;
+}
+
+// Home：直接放到复选框后面的文字开头（不等 selectionchange，避免紧接着打字时来不及纠正）
+el.editor.addEventListener('keydown', (e) => {
+  if (e.key !== 'Home' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const line = caretTodoLine();
+  if (!line) return;
+  e.preventDefault();
+  caretAfterCheckbox(line);
+});
+
+// 真要输入时再兜底一次：光标还在复选框前面，就先挪到文字开头再输入
+el.editor.addEventListener('beforeinput', (e) => {
+  if (!e.inputType.startsWith('insert') || e.isComposing) return;
+  const line = caretTodoLine();
+  if (line && caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+}, true);
+
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed || !el.editor.contains(sel.anchorNode)) return;
+  const a = sel.anchorNode;
+  const line = (a.nodeType === 1 && a.classList.contains('todo')) ? a : (a.nodeType === 3 ? a.parentElement : a).closest('.todo');
+  if (line && el.editor.contains(line) && caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+});
+
 /* 光标放到正文末尾 */
 function focusEditorEnd() {
   el.editor.focus();

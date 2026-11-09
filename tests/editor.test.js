@@ -171,4 +171,39 @@ describe('编辑器', () => {
     assert.ok(saved < r.pngBytes / 3, `体积明显变小：原图 ${r.pngBytes} → ${saved} 字节`);
     console.log(`    图片压缩：${(r.pngBytes / 1048576).toFixed(2)}MB → ${(saved / 1024).toFixed(0)}KB`);
   });
+
+  it('待办行：点行尾空白处打字在行尾，Home 键不会跑到复选框前面，点文字中间和复选框照常', async () => {
+    const content = '<div class="todo"><input type="checkbox">&nbsp;品牌同步</div><div class="todo" data-indent="1"><input type="checkbox">&nbsp;缩进的待办</div>';
+    const setup = () => t.page.evaluate((c) => { el.editor.innerHTML = c; }, content);
+    const box = async (i) => t.page.locator('#editor > .todo').nth(i).boundingBox();
+    // 行尾右侧空白处
+    for (const i of [0, 1]) {
+      await setup();
+      const b = await box(i);
+      await t.page.mouse.click(b.x + b.width - 20, b.y + b.height / 2);
+      await t.page.keyboard.type('X');
+      assert.match(await t.html(), i ? /缩进的待办X<\/div>/ : /品牌同步X<\/div>/);
+    }
+    // Home 键
+    await setup();
+    const b0 = await box(0);
+    await t.page.mouse.click(b0.x + b0.width - 20, b0.y + b0.height / 2);
+    await t.page.keyboard.press('Home');
+    await t.page.keyboard.type('Y');
+    assert.match(await t.html(), /^<div class="todo"><input type="checkbox">&nbsp;Y品牌同步<\/div>/);
+    // 点在文字中间：不挪动
+    await setup();
+    const word = await t.page.evaluate(() => {
+      const tn = el.editor.querySelector('.todo').lastChild;
+      const r = document.createRange(); r.setStart(tn, 3); r.setEnd(tn, 4);
+      const rc = r.getBoundingClientRect(); return { x: rc.left + 1, y: rc.top + rc.height / 2 };
+    });
+    await t.page.mouse.click(word.x, word.y);
+    await t.page.keyboard.type('Z');
+    assert.match(await t.html(), /&nbsp;品牌Z同步|&nbsp;品Z牌同步/);
+    // 复选框本身照常勾选
+    await setup();
+    await t.page.locator('#editor .todo input').first().click();
+    assert.equal(await t.page.locator('#editor .todo input').first().isChecked(), true);
+  });
 });
