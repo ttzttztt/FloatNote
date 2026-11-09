@@ -3,6 +3,7 @@ name: 测试
 on:
   push:
   pull_request:
+  workflow_call: # 「打包与发布」先跑一遍测试，不通过就不发布
 
 jobs:
   e2e:

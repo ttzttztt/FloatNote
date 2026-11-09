@@ -1,14 +1,31 @@
-name: 打包
+name: 打包与发布
 
-# 推送 v1.0.1 这样的版本标签：打包并发布到 Releases（已安装的应用会自动更新）
-# 手动运行（Actions → 打包 → Run workflow）：只打包，产物在本次运行的 Artifacts 里，不发布
+# 发布新版本不用手动打标签，两种方式任选：
+# 1. Actions →「打包与发布」→ Run workflow，选 patch / minor / major：
+#    自动改版本号并提交到 main → 跑测试 → 打标签 → 打包 Windows / Linux → 发布（附自动生成的更新说明）
+# 2. 本地 pnpm release patch，再 git push origin main：package.json 的版本号变了就自动发布这个版本
+# 选「只打包不发布」时：跑测试和打包，产物在这次运行的 Artifacts 里下载，不发布。
+#
+# 更新说明取自 CHANGELOG.md 的「未发布」一节（发布时自动改名为这个版本）；没写就用上一版以来的提交说明。
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 发布哪种版本（patch 修复 / minor 新功能 / major 大改）
+        type: choice
+        default: patch
+        options: [patch, minor, major, 只打包不发布]
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: [package.json]
 
 permissions:
   contents: write
+
+# 同一时间只跑一个发布，避免两次发布抢同一个版本号
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   # CI 在海外，直接用 GitHub 官方下载源
@@ -17,25 +34,87 @@ env:
   npm_config_electron_builder_binaries_mirror: https://github.com/electron-userland/electron-builder-binaries/releases/download/
 
 jobs:
-  # 先建一个草稿 Release，两台打包机都往里面传文件，避免同时各建一个
-  prepare:
-    if: startsWith(github.ref, 'refs/tags/')
+  # 决定这次要不要发布、发布哪个版本（不改任何东西）
+  check:
     runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.v.outputs.go }}
+      release: ${{ steps.v.outputs.release }}
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: 检查标签与 package.json 版本一致
-        run: |
-          v="v$(node -p "require('./package.json').version")"
-          if [ "$v" != "$GITHUB_REF_NAME" ]; then echo "标签 $GITHUB_REF_NAME 与 package.json 版本 $v 不一致"; exit 1; fi
-      - name: 创建草稿 Release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: v
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --title "FloatNote $GITHUB_REF_NAME" --generate-notes
+          BUMP: ${{ github.event_name == 'workflow_dispatch' && inputs.bump || 'none' }}
+        run: |
+          case "$BUMP" in
+            patch|minor|major) v=$(node scripts/bump.js "$BUMP" --dry-run) ;;
+            *) v=$(node -p "require('./package.json').version") ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "$BUMP" = "只打包不发布" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"; echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then
+            echo "::notice::v$v 已经发布过，这次不发布"
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::准备发布 v$v"
+            echo "go=true" >> "$GITHUB_OUTPUT"; echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # 测试不通过就不发布
+  test:
+    needs: check
+    if: needs.check.outputs.go == 'true'
+    uses: ./.github/workflows/test.yml
+
+  # 改版本号、打标签、建草稿 Release（附更新说明）
+  prepare:
+    needs: [check, test]
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+    env:
+      V: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 生成更新说明要用到历史提交和标签
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: 改版本号并提交到 main
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          node scripts/bump.js "${{ inputs.bump }}"
+          test "$(node -p "require('./package.json').version")" = "$V"
+          git commit -am "release: v$V"
+          git push origin HEAD:main
+      - name: 打标签，创建草稿 Release
+        id: tag
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          node scripts/release-notes.js "$V" "$prev" > notes.md
+          cat notes.md
+          git tag -a "v$V" -m "v$V"
+          git push origin "v$V"
+          gh release create "v$V" --draft --verify-tag --title "FloatNote v$V" --notes-file notes.md
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build:
     name: 打包 ${{ matrix.name }}
-    needs: prepare
-    if: always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+    needs: [check, test, prepare]
+    if: >-
+      always() && needs.check.outputs.go == 'true' && needs.test.result == 'success' &&
+      (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +134,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha || github.sha }} # 发布时用改过版本号的那次提交
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -73,12 +154,12 @@ jobs:
           key: eb-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: eb-${{ runner.os }}-
       # GitHub 的 Release 下载偶尔返回 502 / 504：前两次用 GitHub，第三次改用 npmmirror 镜像兜底
-      - name: 打包（推送标签时同时上传到草稿 Release）
+      - name: 打包（发布时同时上传到草稿 Release）
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          P: ${{ needs.check.outputs.release == 'true' && 'always' || 'never' }}
         run: |
-          P="${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}"
           for i in 1 2 3; do
             if [ "$i" = 3 ]; then
               echo "改用 npmmirror 镜像下载"
@@ -98,11 +179,11 @@ jobs:
 
   # 两边都打包成功后，把草稿正式发布；已安装的应用从这时起能检查到新版本
   publish:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [check, build]
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: 发布 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        run: gh release edit "v${{ needs.check.outputs.version }}" --repo "$GITHUB_REPOSITORY" --draft=false --latest

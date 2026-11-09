@@ -168,20 +168,24 @@ pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选
 ```
 
 - 打包时同样读取 `.npmrc` 里的国内镜像下载 Electron 与 NSIS 工具。
-- Windows 安装包需要在 Windows 上打；也可以在 GitHub 仓库的 Actions →「打包」→ Run workflow，或推送 `v1.0.0` 这样的版本标签，自动在 Windows / Linux 上打包，产物在该次运行的 Artifacts 里下载。
+- Windows 安装包需要在 Windows 上打；也可以在 GitHub 仓库的 Actions →「打包与发布」→ Run workflow 选「只打包不发布」，自动在 Windows / Linux 上打包，产物在该次运行的 Artifacts 里下载。
 - 安装版与开发版共用同一个数据目录，装上之后便笺都在。
 
 ### 发布新版本与自动更新
 
-```bash
-pnpm release patch   # 1.0.0 → 1.0.1；也可以写 minor / major，或直接写版本号 pnpm release 1.2.0
-```
+不需要手动打标签，两种方式任选：
 
-脚本会改好 `package.json` 的版本号、提交并打标签，然后按提示推送分支和标签。推送标签后，GitHub Actions（`.github/workflows/build.yml`）会：
+1. **在 GitHub 上点一下**：仓库 → Actions →「打包与发布」→ Run workflow，选 `patch`（修复）/ `minor`（新功能）/ `major`（大改）。
+2. **在本地**：
 
-1. 检查标签与 `package.json` 版本一致，创建草稿 Release；
-2. 在 Windows / Linux 上打包，把安装包和更新信息（`latest.yml` 等）上传到这个 Release；
-3. 两边都成功后正式发布。
+   ```bash
+   pnpm release patch   # 也可以写 minor / major，或直接写版本号 pnpm release 1.2.0
+   git push origin main
+   ```
+
+之后全部自动完成（`.github/workflows/build.yml`）：改版本号并提交到 main → 跑一遍测试（不通过就不发布）→ 打标签 → 在 Windows / Linux 上打包 → 上传安装包和更新信息（`latest.yml` 等）→ 正式发布。选「只打包不发布」时只打包，产物在这次运行的 Artifacts 里。
+
+**更新说明**也是自动生成的：开头是下载表，下面是这一版改了什么，内容取自 [`CHANGELOG.md`](CHANGELOG.md) 的「未发布」一节，发布时这一节会自动改名为这个版本号。平时改完东西往「未发布」里记一笔即可；没写的话，就用上一版以来的提交说明。
 
 已安装的 FloatNote（安装版、Linux AppImage）在启动 15 秒后及之后每 6 小时检查一次，有新版本就在后台下载，下载完弹出「重启更新」，不点的话下次退出时自动安装。设置面板里可以看到当前版本、手动检查更新。开发版（`pnpm start`）和便携版不会自动更新。
 
@@ -207,6 +211,8 @@ renderer/window.js 窗口按钮、设置面板、拖动 / 缩放、贴边收起�
 renderer/app.js    启动流程
 renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
 scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
+scripts/release.js 本地准备发布（改版本号、提交）；bump.js 改版本号，release-notes.js 生成 Release 说明
+CHANGELOG.md       更新记录（「未发布」一节就是下一版的 Release 说明）
 build/installer.nsh Windows 安装程序的补充脚本（安装 / 更新后刷新图标缓存）
 docs/images/       README 里的截图
 tests/             端到端测试（Playwright 驱动真实 Electron）
