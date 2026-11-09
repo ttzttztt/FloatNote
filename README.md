@@ -98,7 +98,7 @@ pnpm dist            # 打当前系统的安装包，输出到 release/
 ```
 
 ```bash
-pnpm dist:win        # Windows：安装程序（可选安装目录）+ 免安装便携版
+pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选安装目录）+ 免安装便携版 FloatNote-x.y.z-portable.exe
 ```
 
 - 打包时同样读取 `.npmrc` 里的国内镜像下载 Electron 与 NSIS 工具。

@@ -50,8 +50,7 @@
           ]
         }
       ],
-      "icon": "assets/icon-256.png",
-      "artifactName": "FloatNote-${version}-${arch}-${target}.${ext}"
+      "icon": "assets/icon-256.png"
     },
     "nsis": {
       "oneClick": false,
@@ -64,7 +63,8 @@
         "zh_CN"
       ],
       "language": "2052",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "FloatNote-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "FloatNote-${version}-portable.${ext}"
