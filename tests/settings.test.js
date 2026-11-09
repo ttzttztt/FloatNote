@@ -18,8 +18,8 @@ describe('设置：快捷键与开机自启', () => {
     await t.page.click('#btn-settings');
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   const hk = () => t.page.evaluate(() => window.api.getHotkey());
@@ -36,7 +36,8 @@ describe('设置：快捷键与开机自启', () => {
     assert.equal(await t.page.textContent('#sm-hotkey-hint'), 'Ctrl+Alt+K');
     assert.ok(!(await t.page.locator('#settings-menu').evaluate(e => e.classList.contains('hidden'))), '录制时设置面板不被关掉');
     await flush();
-    assert.equal(t.saved().settings.hotkey, 'CommandOrControl+Alt+K');
+    assert.equal(t.local().hotkey, 'CommandOrControl+Alt+K', '快捷键是本机设置，存在 local.json');
+    assert.equal(t.saved().settings.hotkey, undefined, '不写进会同步的 data.json');
     const registered = await t.app.evaluate(({ globalShortcut }) => [globalShortcut.isRegistered('CommandOrControl+Alt+K'), globalShortcut.isRegistered('CommandOrControl+Alt+Space')]);
     assert.deepEqual(registered, [true, false], '新组合生效，旧组合释放');
   });

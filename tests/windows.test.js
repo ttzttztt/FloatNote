@@ -22,8 +22,8 @@ describe('桌面便笺与贴边收起', () => {
     dir = t.dir;
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   it('贴到桌面：独立窗口，内容双向同步，放回便笺本', async () => {

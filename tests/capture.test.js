@@ -11,8 +11,8 @@ describe('快速捕捉', { skip: !hasXdotool() && '需要 Linux + xdotool' }, ()
     t = await launchApp({ seed: { notes: [note('a', '<div>原有内容</div>')], settings: { activeNoteId: 'a' } } });
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   it('Ctrl+Alt+C 把剪贴板文字连同时间追加到当前便笺', async () => {

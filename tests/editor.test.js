@@ -11,8 +11,8 @@ describe('编辑器', () => {
     t = await launchApp({ seed: { notes: [note('a')], settings: { activeNoteId: 'a' } } });
   });
   after(async () => {
+    await t.close(); // 先关闭再断言：断言失败时应用也不会一直开着，测试进程能正常结束
     assert.deepEqual(t.errors, []);
-    await t.close();
   });
 
   const reset = async () => {

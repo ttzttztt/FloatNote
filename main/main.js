@@ -1,7 +1,8 @@
 'use strict';
 
 const {
-  app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, clipboard, nativeImage, screen, Notification, shell, dialog
+  app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, clipboard, nativeImage, screen, Notification, shell, dialog,
+  protocol, net
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -12,6 +13,28 @@ const { pathToFileURL } = require('url');
 // 透明窗口下的合成稳定性：禁用硬件加速可避免部分显卡驱动下的透明/半透明渲染异常
 app.disableHardwareAcceleration();
 
+// 便笺图片地址 fnimg://<便笺>/<文件>：与数据目录位置无关（换目录、换电脑都能显示）
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'fnimg', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+]);
+
+function registerImageProtocol() {
+  protocol.handle('fnimg', (req) => {
+    try {
+      const u = new URL(req.url);
+      const id = u.hostname;
+      const file = decodeURIComponent(u.pathname.replace(/^\/+/, ''));
+      // 只允许读数据目录 images/ 下的文件，防止 ../ 之类越界
+      if (!/^[a-z0-9]+$/.test(id) || !/^[\w.-]+$/.test(file) || file.startsWith('.')) return new Response('bad request', { status: 400 });
+      const full = path.join(imagesDir, id, file);
+      if (!full.startsWith(imagesDir + path.sep)) return new Response('forbidden', { status: 403 });
+      return net.fetch(pathToFileURL(full).toString());
+    } catch (_) {
+      return new Response('not found', { status: 404 });
+    }
+  });
+}
+
 const GUTTER = 14; // 卡片四周留给投影的透明边距（与 styles.css 的 --gutter 一致）
 const INDEX_HTML = path.join(__dirname, '..', 'renderer', 'index.html');
 
@@ -19,17 +42,40 @@ let tray = null;
 let isQuitting = false;
 let hideHintShown = false; // 是否已提示过“隐藏后如何唤回”
 
-/* ============ 数据：主进程持有唯一一份，渲染进程只发增量 ============ */
-// 数据目录固定为 <appData>/floatnote：打包后的应用默认会用产品名 FloatNote 命名目录，
-// 在 macOS / Linux 上与开发时的 floatnote 是两个目录，装上正式版后便笺会“不见”。
-// 自动化测试用 FLOATNOTE_USER_DATA 指向独立的临时目录，不碰真实便笺。
+/* ============ 数据：主进程持有唯一一份，渲染进程只发增量 ============
+   两类目录：
+   - 本机目录 userData（固定为 <appData>/floatnote）：本机设置 local.json、数据位置 location.json、每日备份、Chromium 缓存。
+     打包后的应用默认会用产品名 FloatNote 命名目录，在 macOS / Linux 上与开发时的 floatnote 不同，所以显式固定。
+   - 数据目录（默认就是本机目录，可在设置里改到 OneDrive / 坚果云等同步文件夹）：data.json 与 images/。
+   自动化测试用 FLOATNOTE_USER_DATA 指向独立的临时目录，不碰真实便笺。 */
 app.setPath('userData', process.env.FLOATNOTE_USER_DATA || path.join(app.getPath('appData'), 'floatnote'));
 const userDataDir = app.getPath('userData');
-const dataFile = path.join(userDataDir, 'data.json');
-const imagesDir = path.join(userDataDir, 'images');
+const locationFile = path.join(userDataDir, 'location.json');
+const localFile = path.join(userDataDir, 'local.json');
+
+function readLocation() {
+  try {
+    const d = JSON.parse(fs.readFileSync(locationFile, 'utf-8'));
+    if (d && typeof d.dataDir === 'string' && d.dataDir) return d.dataDir;
+  } catch (_) { /* 没有就用默认 */ }
+  return null;
+}
+
+let dataDir;
+let dataFile;
+let imagesDir;
+function setDataPaths(dir) {
+  dataDir = path.resolve(dir);
+  dataFile = path.join(dataDir, 'data.json');
+  imagesDir = path.join(dataDir, 'images');
+}
+setDataPaths(readLocation() || userDataDir);
+const isCustomDataDir = () => dataDir !== path.resolve(userDataDir);
 
 // 由主进程维护、渲染进程不会改写的设置项
 const MAIN_OWNED_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey'];
+// 每台电脑各自的设置：存在本机 local.json，不随数据目录同步
+const LOCAL_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey', 'activeNoteId'];
 
 function ensureDirs() {
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
@@ -47,39 +93,103 @@ function defaultSettings() {
   };
 }
 
+/* 旧版本把图片存成本机绝对路径 file:///…/images/<便笺>/<文件>，换数据目录或换一台电脑就失效；
+   统一改成与位置无关的 fnimg://<便笺>/<文件>，由主进程按当前数据目录读取 */
+const IMG_FILE_URL_RE = /file:\/\/\/[^"'\s<>]*?\/images\/([a-z0-9]+)\/([\w.-]+)/gi;
+function migrateImageUrls(note) {
+  if (note && typeof note.content === 'string' && note.content.includes('file:')) {
+    note.content = note.content.replace(IMG_FILE_URL_RE, (m, id, f) => `fnimg://${id.toLowerCase()}/${f}`);
+  }
+}
+
+const TOMBSTONE_MS = 60 * 24 * 3600 * 1000; // 删除记录保留 60 天，防止另一台电脑把删掉的便笺带回来
+
 function normalizeData(d) {
+  if (!d || typeof d !== 'object') d = {};
   d.settings = Object.assign(defaultSettings(), d.settings || {});
   if (!d.settings.stickies || typeof d.settings.stickies !== 'object') d.settings.stickies = {};
   d.notes = Array.isArray(d.notes) ? d.notes : [];
+  d.deleted = d.deleted && typeof d.deleted === 'object' ? d.deleted : {};
+  const now = Date.now();
+  for (const [id, ts] of Object.entries(d.deleted)) if (now - ts > TOMBSTONE_MS) delete d.deleted[id];
+  d.settingsMtime = Number(d.settingsMtime) || 0;
+  d.orderMtime = Number(d.orderMtime) || 0;
+  d.notes.forEach(migrateImageUrls);
   return d;
 }
 
-let recoveredFrom = null; // 启动时数据文件损坏、从哪份备份恢复的（用于提示）
-let restoring = false;     // 正在从备份恢复：期间忽略窗口发来的增量（重新加载前的旧改动不能混进备份）
+const isOurData = (d) => d && typeof d === 'object' && Array.isArray(d.notes) && d.settings && typeof d.settings === 'object';
 
-function loadData() {
+let recoveredFrom = null; // 启动时数据文件损坏、从哪份备份恢复的（用于提示）
+let restoring = false;     // 正在恢复备份 / 切换数据目录：期间忽略窗口发来的增量（重新加载前的旧改动不能混进来）
+
+function readLocal() {
+  try { return JSON.parse(fs.readFileSync(localFile, 'utf-8')) || null; } catch (_) { return null; }
+}
+
+/* 读共享数据（data.json）。损坏时改名留档并从最近的备份恢复，绝不拿一份空数据把它覆盖掉 */
+function readSharedData() {
   if (fs.existsSync(dataFile)) {
     try {
       return normalizeData(JSON.parse(fs.readFileSync(dataFile, 'utf-8')));
     } catch (e) {
       console.error('[loadData] data.json 损坏:', e.message);
-      // 损坏的文件改名留档，再从最近的备份恢复；绝不能拿一份空数据把它覆盖掉
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      try { fs.renameSync(dataFile, path.join(userDataDir, `data.corrupt-${stamp}.json`)); } catch (_) { /* ignore */ }
+      try { fs.renameSync(dataFile, path.join(dataDir, `data.corrupt-${stamp}.json`)); } catch (_) { /* ignore */ }
       for (const b of listBackups()) {
         try {
           const d = normalizeData(JSON.parse(fs.readFileSync(b.file, 'utf-8')));
           recoveredFrom = b.label;
-          saveData(d);
           return d;
         } catch (_) { /* 这份也坏了，试下一份 */ }
       }
     }
   }
-  return { version: 1, notes: [], settings: defaultSettings() };
+  return normalizeData({ version: 1, notes: [] });
 }
 
-/* ============ 自动备份：每天一份，保留最近 7 天 ============ */
+/* 共享数据 + 本机设置。旧版本的 data.json 里带着本机设置，本机还没有 local.json 时沿用它们（迁移） */
+function loadData() {
+  const d = readSharedData();
+  const local = readLocal();
+  if (local) for (const k of LOCAL_SETTINGS) if (k in local) d.settings[k] = local[k];
+  if (!d.settings.stickies || typeof d.settings.stickies !== 'object') d.settings.stickies = {};
+  if (recoveredFrom) saveData(d);
+  return d;
+}
+
+/* 拆成共享部分和本机部分 */
+function splitData(data) {
+  const shared = { version: 1, notes: data.notes, deleted: data.deleted || {}, settingsMtime: data.settingsMtime || 0, orderMtime: data.orderMtime || 0, settings: {} };
+  const local = {};
+  for (const [k, v] of Object.entries(data.settings || {})) (LOCAL_SETTINGS.includes(k) ? local : shared.settings)[k] = v;
+  return { shared, local };
+}
+
+function writeJsonAtomic(file, obj) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf-8');
+  fs.renameSync(tmp, file);
+}
+
+let lastWrite = null; // 本进程最后一次写 data.json 后的 mtime / size：监视文件时据此区分“是我写的”还是“别处改的”
+
+function saveData(data) {
+  try {
+    ensureDirs();
+    const { shared, local } = splitData(data);
+    writeJsonAtomic(dataFile, shared);
+    const st = fs.statSync(dataFile);
+    lastWrite = { mtimeMs: st.mtimeMs, size: st.size, hash: canonical(shared) };
+    writeJsonAtomic(localFile, local);
+    return true;
+  } catch (e) {
+    console.error('[saveData]', e);
+    return false;
+  }
+}
+
+/* ============ 自动备份：每天一份，保留最近 7 天（放在本机目录，不随同步文件夹走） ============ */
 const backupDir = path.join(userDataDir, 'backups');
 const KEEP_BACKUPS = 7;
 const BACKUP_RE = /^data-(\d{4})-(\d{2})-(\d{2})\.json$/;
@@ -139,28 +249,22 @@ async function restoreBackup(b) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     fs.copyFileSync(dataFile, path.join(backupDir, `before-restore-${stamp}.json`));
   } catch (_) { /* ignore */ }
-  // 窗口位置沿用当前的，其余全部换成备份
-  backupData.settings.bounds = store.settings.bounds;
-  for (const id of Object.keys(store.settings.stickies)) closeSticky(id, false);
-  restoring = true;
+  // 本机设置（窗口位置、桌面便笺、快捷键等）沿用当前的，其余全部换成备份
+  for (const k of LOCAL_SETTINGS) backupData.settings[k] = store.settings[k];
+  backupData.settingsMtime = Date.now();
+  backupData.notes.forEach(n => { n.mtime = Date.now(); }); // 让同步的其他设备也以备份为准
   store = backupData;
-  store.settings.stickies = backupData.settings.stickies || {};
   flushStore();
-  if (mainCtx && !mainCtx.win.isDestroyed()) {
-    mainCtx.win.webContents.once('did-finish-load', () => { restoring = false; });
-    mainCtx.win.webContents.reload();
-  } else {
-    restoring = false;
-  }
-  restoreStickies();
+  reloadAllWindows();
   notify('已从备份恢复', `${b.label}，共 ${live} 张便笺`);
 }
 
-/* ============ 清理没有便笺在用的图片（启动后执行，跳过最近 10 分钟内的文件） ============ */
+/* ============ 清理没有便笺在用的图片 ============
+   默认目录：跳过 10 分钟内的新文件。同步文件夹：图片可能比 data.json 先同步过来，只清理 7 天以上的。 */
 function cleanupImages() {
   try {
     if (!fs.existsSync(imagesDir)) return;
-    const recent = Date.now() - 10 * 60 * 1000;
+    const recent = Date.now() - (isCustomDataDir() ? 7 * 24 * 3600 * 1000 : 10 * 60 * 1000);
     let removed = 0;
     for (const dir of fs.readdirSync(imagesDir)) {
       const full = path.join(imagesDir, dir);
@@ -188,21 +292,12 @@ function cleanupImages() {
 const TRASH_MS = 30 * 24 * 3600 * 1000;
 function purgeOldTrash() {
   const before = store.notes.length;
-  store.notes = store.notes.filter(n => !n.trashed || Date.now() - n.trashed < TRASH_MS);
+  store.notes = store.notes.filter(n => {
+    const expired = n.trashed && Date.now() - n.trashed >= TRASH_MS;
+    if (expired) store.deleted[n.id] = Date.now();
+    return !expired;
+  });
   if (store.notes.length !== before) scheduleStoreSave();
-}
-
-function saveData(data) {
-  try {
-    ensureDirs();
-    const tmp = dataFile + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmp, dataFile);
-    return true;
-  } catch (e) {
-    console.error('[saveData]', e);
-    return false;
-  }
 }
 
 let store = null;
@@ -219,31 +314,311 @@ function flushStore() {
 
 /* 增量格式：
    { upserts: [{ id, set: {...}, unset: [...] }], deletes: [id], order: [id] | null,
-     settings: { set: {...}, unset: [...] } | null } */
+     settings: { set: {...}, unset: [...] } | null }
+   主进程顺带记下修改时间（便笺 mtime、共享设置 settingsMtime）与删除记录，供多设备合并时判断谁新谁旧 */
 function applyPatch(patch) {
   if (!patch) return;
+  const now = Date.now();
   for (const u of patch.upserts || []) {
     let n = store.notes.find(x => x.id === u.id);
     if (!n) { n = { id: u.id }; store.notes.push(n); }
     Object.assign(n, u.set || {});
     (u.unset || []).forEach(k => { delete n[k]; });
+    n.mtime = now;
+    delete store.deleted[n.id];
     if (n.trashed) closeSticky(n.id, false);
   }
   if (patch.deletes && patch.deletes.length) {
     const del = new Set(patch.deletes);
     store.notes = store.notes.filter(n => !del.has(n.id));
-    del.forEach(id => closeSticky(id, false));
+    del.forEach(id => { store.deleted[id] = now; closeSticky(id, false); });
   }
   if (Array.isArray(patch.order)) {
     const rank = new Map(patch.order.map((id, i) => [id, i]));
     store.notes.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9) - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+    store.orderMtime = now;
   }
   if (patch.settings) {
     const set = Object.assign({}, patch.settings.set || {});
     MAIN_OWNED_SETTINGS.forEach(k => delete set[k]);
     Object.assign(store.settings, set);
     (patch.settings.unset || []).forEach(k => { if (!MAIN_OWNED_SETTINGS.includes(k)) delete store.settings[k]; });
+    const keys = [...Object.keys(set), ...(patch.settings.unset || [])];
+    if (keys.some(k => !LOCAL_SETTINGS.includes(k))) store.settingsMtime = now;
   }
+}
+
+/* ============ 多设备同步：数据目录放在同步文件夹里时，合并其他设备的修改 ============
+   每 2 秒检查 data.json；发现不是自己写的，就按便笺逐张合并（两边都改过的取最后修改的），
+   删除记录防止删掉的便笺被带回来。同步软件产生的冲突副本（data (1).json 等）也会合并后改名为 .merged。 */
+function stableStringify(v) {
+  if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+  return JSON.stringify(v);
+}
+
+const noteTime = (n) => Math.max(n.mtime || 0, n.updatedAt || 0, n.trashed || 0);
+
+/* 用于判断“两份数据是否一样”：便笺按编号排序后比较，顺序不同不算不同
+   （否则两台电脑顺序不一致时会各自写回自己的顺序，来回触发） */
+function canonical(shared) {
+  return stableStringify(Object.assign({}, shared, {
+    notes: [...shared.notes].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    orderMtime: 0
+  }));
+}
+
+/* 把 other 合并进 target，返回给各窗口的增量（没有变化返回 null） */
+function mergeInto(target, other) {
+  const patch = { upserts: [], deletes: [], order: null, settings: null };
+  for (const [id, ts] of Object.entries(other.deleted || {})) {
+    if (!target.deleted[id] || target.deleted[id] < ts) target.deleted[id] = ts;
+  }
+  const byId = new Map(target.notes.map(n => [n.id, n]));
+  let added = false;
+  for (const o of other.notes) {
+    const del = target.deleted[o.id];
+    if (del && del >= noteTime(o)) continue; // 已经删掉了，不复活
+    const l = byId.get(o.id);
+    if (!l) {
+      const n = Object.assign({}, o);
+      target.notes.push(n);
+      byId.set(n.id, n);
+      delete target.deleted[n.id];
+      patch.upserts.push({ id: n.id, set: Object.assign({}, n), unset: [] });
+      added = true;
+    } else if (noteTime(o) > noteTime(l) && stableStringify(o) !== stableStringify(l)) {
+      const unset = Object.keys(l).filter(k => !(k in o));
+      unset.forEach(k => { delete l[k]; });
+      Object.assign(l, o);
+      patch.upserts.push({ id: l.id, set: Object.assign({}, o), unset });
+    }
+  }
+  for (const l of [...target.notes]) {
+    const del = target.deleted[l.id];
+    if (del && del >= noteTime(l)) {
+      target.notes.splice(target.notes.indexOf(l), 1);
+      patch.deletes.push(l.id);
+      closeSticky(l.id, false);
+    }
+  }
+  // 排列顺序（置顶、拖动排序）：以最后调整的一方为准；对方没有的便笺接在后面
+  if ((other.orderMtime || 0) > (target.orderMtime || 0)) {
+    const rank = new Map(other.notes.map((n, i) => [n.id, i]));
+    const before = target.notes.map(n => n.id).join(',');
+    target.notes.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9) - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+    target.orderMtime = other.orderMtime;
+    if (target.notes.map(n => n.id).join(',') !== before) added = true;
+  }
+  if (added) patch.order = target.notes.map(n => n.id);
+  if ((other.settingsMtime || 0) > (target.settingsMtime || 0)) {
+    const set = {};
+    for (const [k, v] of Object.entries(other.settings || {})) {
+      if (LOCAL_SETTINGS.includes(k) || MAIN_OWNED_SETTINGS.includes(k)) continue;
+      if (stableStringify(target.settings[k]) !== stableStringify(v)) { set[k] = v; target.settings[k] = v; }
+    }
+    target.settingsMtime = other.settingsMtime;
+    if (Object.keys(set).length) patch.settings = { set, unset: [] };
+  }
+  return patch.upserts.length || patch.deletes.length || patch.settings ? patch : null;
+}
+
+/* 合并一份外来数据，必要时写回 data.json。
+   compareWith：与哪份数据比较来决定要不要写回——合并 data.json 时就是它本身（一样就不写，避免两台电脑来回触发）；
+   合并冲突副本时要和 data.json 比较，否则副本里的新内容只进了本机内存，另一台电脑永远看不到 */
+function applyExternal(other, compareWith = other) {
+  const patch = mergeInto(store, other);
+  if (patch) broadcast('data:patched', patch);
+  const mine = canonical(splitData(store).shared);
+  const theirs = compareWith ? canonical(splitData(compareWith).shared) : null;
+  if (mine !== theirs) flushStore();
+  else if (patch) lastWrite = Object.assign({}, lastWrite, { hash: mine });
+  return !!patch;
+}
+
+function readDataFileQuiet() {
+  try {
+    const d = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+    return isOurData(d) ? normalizeData(d) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+let watchedFile = null;
+let mergeTimer = null;
+let mergeRetries = 0;
+let conflictTimer = null;
+
+function startDataWatch() {
+  stopDataWatch();
+  watchedFile = dataFile;
+  fs.watchFile(watchedFile, { interval: 2000 }, (cur) => {
+    if (!cur.mtimeMs || restoring) return;
+    if (lastWrite && cur.mtimeMs === lastWrite.mtimeMs && cur.size === lastWrite.size) return; // 自己写的
+    clearTimeout(mergeTimer);
+    mergeTimer = setTimeout(mergeExternalFile, 400);
+  });
+  if (isCustomDataDir()) conflictTimer = setInterval(mergeConflictCopies, 10000);
+}
+
+function stopDataWatch() {
+  if (watchedFile) fs.unwatchFile(watchedFile);
+  watchedFile = null;
+  clearTimeout(mergeTimer);
+  clearInterval(conflictTimer);
+  conflictTimer = null;
+}
+
+function mergeExternalFile() {
+  let other;
+  try {
+    other = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+    if (!isOurData(other)) throw new Error('not FloatNote data');
+  } catch (e) {
+    // 同步软件可能还没写完：稍后重试几次
+    if (++mergeRetries <= 5) mergeTimer = setTimeout(mergeExternalFile, 2000);
+    return;
+  }
+  mergeRetries = 0;
+  const other2 = normalizeData(other);
+  if (lastWrite && canonical(splitData(other2).shared) === lastWrite.hash) return;
+  if (applyExternal(other2)) console.log('[sync] merged changes from', dataFile);
+}
+
+/* 同步软件冲突时会另存一份（data (1).json、data-电脑名.json、data_冲突副本.json 等）：合并后改名 .merged */
+function mergeConflictCopies() {
+  if (restoring) return;
+  let files;
+  try { files = fs.readdirSync(dataDir); } catch (_) { return; }
+  for (const f of files) {
+    if (f === 'data.json' || !/^data.*\.json$/i.test(f) || /^data\.corrupt-/i.test(f)) continue;
+    const full = path.join(dataDir, f);
+    try {
+      const other = JSON.parse(fs.readFileSync(full, 'utf-8'));
+      if (!isOurData(other)) continue; // 不是便笺数据，不碰
+      applyExternal(normalizeData(other), readDataFileQuiet());
+      fs.renameSync(full, full + '.merged');
+      console.log('[sync] merged conflict copy', f);
+    } catch (_) { /* 读不了就下次再试 */ }
+  }
+}
+
+/* ============ 更改数据目录 ============ */
+function reloadAllWindows() {
+  restoring = true;
+  const main = mainCtx && !mainCtx.win.isDestroyed() ? mainCtx : null;
+  for (const c of allWindows()) if (c !== main) c.win.webContents.reload();
+  if (main) {
+    main.win.webContents.once('did-finish-load', () => { restoring = false; });
+    main.win.webContents.reload();
+  } else {
+    restoring = false;
+  }
+}
+
+const liveCount = (d) => d.notes.filter(n => !n.trashed).length;
+
+/* mode：move（目标为空：复制过去）/ merge（合并两边）/ theirs（只用目标里的） */
+function changeDataDir(dir, mode = 'move') {
+  dir = path.resolve(dir);
+  if (dir === dataDir) return { ok: true, dir, same: true };
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.floatnote-write-test');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+  } catch (e) {
+    return { ok: false, error: '这个文件夹无法写入：' + e.message };
+  }
+  flushStore();
+  const targetFile = path.join(dir, 'data.json');
+  const copyImages = () => {
+    if (fs.existsSync(imagesDir)) fs.cpSync(imagesDir, path.join(dir, 'images'), { recursive: true, force: false, errorOnExist: false });
+  };
+  let next = store;
+  if (fs.existsSync(targetFile)) {
+    let other;
+    try {
+      other = JSON.parse(fs.readFileSync(targetFile, 'utf-8'));
+      if (!isOurData(other)) throw new Error('不是 FloatNote 的数据');
+    } catch (e) {
+      return { ok: false, error: '那里的 data.json 无法读取：' + e.message };
+    }
+    other = normalizeData(other);
+    if (mode === 'theirs') {
+      for (const k of LOCAL_SETTINGS) other.settings[k] = store.settings[k];
+      next = other;
+    } else {
+      mode = 'merge';
+      mergeInto(store, other);
+      copyImages();
+    }
+  } else {
+    mode = 'move';
+    copyImages();
+  }
+  stopDataWatch();
+  setDataPaths(dir);
+  store = next;
+  flushStore();
+  try {
+    if (isCustomDataDir()) writeJsonAtomic(locationFile, { dataDir });
+    else if (fs.existsSync(locationFile)) fs.unlinkSync(locationFile);
+  } catch (e) {
+    console.error('[changeDataDir] location', e.message);
+  }
+  startDataWatch();
+  reloadAllWindows();
+  rebuildTrayMenu();
+  return { ok: true, dir: dataDir, mode };
+}
+
+/* 设置里点「更改」/「恢复默认」：选文件夹并按情况确认 */
+async function pickDataDir(win, toDefault) {
+  let dir;
+  if (toDefault) {
+    dir = userDataDir;
+  } else {
+    const r = await dialog.showOpenDialog(win, {
+      title: '选择便笺保存位置',
+      buttonLabel: '保存到这里',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    dir = r.filePaths[0];
+  }
+  if (path.resolve(dir) === dataDir) return { ok: true, dir: dataDir, same: true };
+  const targetFile = path.join(dir, 'data.json');
+  let mode = 'move';
+  if (fs.existsSync(targetFile)) {
+    let n = 0;
+    try { n = liveCount(normalizeData(JSON.parse(fs.readFileSync(targetFile, 'utf-8')))); } catch (e) {
+      await dialog.showMessageBox(win, { type: 'error', message: '那里的 data.json 无法读取', detail: e.message });
+      return { ok: false, canceled: true };
+    }
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['合并两边的便笺', '只用那里的便笺', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      message: `这个文件夹里已经有 ${n} 张便笺`,
+      detail: '合并：两边的便笺都保留，同一张便笺以最后修改的为准。\n只用那里的：本机现在的便笺不带过去（仍留在原位置，随时可以切回来）。'
+    });
+    if (response === 2) return { ok: false, canceled: true };
+    mode = response === 0 ? 'merge' : 'theirs';
+  } else {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['复制过去并使用', '取消'],
+      defaultId: 0,
+      cancelId: 1,
+      message: '把便笺保存到这个文件夹？',
+      detail: `${dir}\n\n现有的便笺和图片会复制过去，之后的修改都保存在那里；原位置的文件保留不动。\n放在 OneDrive、坚果云、iCloud 等同步文件夹里，多台电脑就能共用便笺。`
+    });
+    if (response !== 0) return { ok: false, canceled: true };
+  }
+  return changeDataDir(dir, mode);
 }
 
 /* ============ 窗口：主窗口 + 若干“贴在桌面”的便笺窗口 ============ */
@@ -1012,7 +1387,7 @@ function rebuildTrayMenu() {
         ? backups.map(b => ({ label: b.label, click: () => restoreBackup(b) }))
         : [{ label: '还没有备份（每天首次启动时自动备份）', enabled: false }]
     },
-    { label: '打开数据文件夹', click: () => shell.openPath(userDataDir) },
+    { label: '打开数据文件夹', click: () => shell.openPath(dataDir) },
     { type: 'separator' },
     { label: '退出 FloatNote', click: () => { isQuitting = true; app.quit(); } }
   ]);
@@ -1062,7 +1437,7 @@ function registerIpc() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, id + ext);
     fs.writeFileSync(file, Buffer.from(m[2], 'base64'));
-    return pathToFileURL(file).href;
+    return `fnimg://${String(noteId).toLowerCase()}/${id + ext}`;
   });
 
   // Electron 45 起剪贴板改为异步 API（read/write + ClipboardItem），不再提供 readImage
@@ -1146,6 +1521,11 @@ function registerIpc() {
   ipcMain.handle('hotkey:suspend', (e, on) => suspendHotkeys(!!on));
   ipcMain.handle('app:getAutoLaunch', () => getAutoLaunch());
   ipcMain.handle('app:info', () => ({ version: app.getVersion() }));
+  ipcMain.handle('data:getDir', () => ({ dir: dataDir, isDefault: !isCustomDataDir() }));
+  ipcMain.handle('data:pickDir', (e) => pickDataDir(BrowserWindow.fromWebContents(e.sender), false));
+  ipcMain.handle('data:resetDir', (e) => pickDataDir(BrowserWindow.fromWebContents(e.sender), true));
+  ipcMain.handle('data:setDir', (e, { dir, mode }) => changeDataDir(dir, mode)); // 不弹窗的版本（测试用）
+  ipcMain.handle('data:openDir', () => shell.openPath(dataDir));
   ipcMain.handle('update:get', () => Object.assign({}, updateState));
   ipcMain.handle('update:check', () => checkForUpdate());
   ipcMain.handle('update:install', () => installUpdate());
@@ -1181,6 +1561,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     store = loadData();
     purgeOldTrash();
+    registerImageProtocol();
     registerIpc();
     createMainWindow();
     restoreStickies();
@@ -1190,6 +1571,9 @@ if (!gotLock) {
     dailyBackup();
     setInterval(dailyBackup, 3 * 3600 * 1000); // 跨天不关机也会备份
     initAutoUpdate();
+    if (!fs.existsSync(dataFile)) flushStore(); // 首次运行：先落一份，便于监视
+    startDataWatch();
+    if (isCustomDataDir()) mergeConflictCopies();
     setTimeout(cleanupImages, Number(process.env.FLOATNOTE_CLEANUP_DELAY) || 15000);
     if (recoveredFrom) notify('数据文件损坏，已自动恢复', `已从 ${recoveredFrom} 的备份恢复。损坏的文件已改名保留在数据文件夹中。`);
   });

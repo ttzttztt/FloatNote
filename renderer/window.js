@@ -145,6 +145,25 @@ el.btnSettings.addEventListener('click', async () => {
   if (!IS_STICKY) el.smAutoLaunch.checked = await window.api.getAutoLaunch();
 });
 
+/* ============ 数据位置：可放到 OneDrive / 坚果云等同步文件夹，多台电脑共用便笺 ============ */
+async function showDataDir() {
+  const { dir, isDefault } = await window.api.getDataDir();
+  el.smDataDir.textContent = isDefault ? '默认位置' : dir.split(/[\\/]/).filter(Boolean).slice(-2).join('/');
+  el.smDataDir.title = dir + '\n点击打开文件夹';
+  el.smDataDirReset.hidden = isDefault;
+}
+
+el.smDataDir.addEventListener('click', (e) => { e.stopPropagation(); window.api.openDataDir(); });
+for (const [btn, fn] of [[el.smDataDirChange, 'pickDataDir'], [el.smDataDirReset, 'resetDataDir']]) {
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    persist(); // 先把没保存的改动交给主进程，再切换
+    const r = await window.api[fn]();
+    if (r && r.ok === false && r.error) toast(r.error);
+    // 成功时主进程会重新加载所有窗口
+  });
+}
+
 /* ============ 版本与自动更新 ============ */
 const UPDATE_LABEL = {
   dev: ['开发版不自动更新', true],

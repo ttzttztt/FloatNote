@@ -58,6 +58,7 @@ async function init() {
   if (ctx && ctx.dock) onDockState(ctx.dock);
   window.api.onHotkeyChanged(showHotkeys);
   el.smVersion.textContent = 'v' + (await window.api.getAppInfo()).version;
+  if (!IS_STICKY) showDataDir();
   showUpdateState(await window.api.getUpdateState());
   window.api.onUpdateState(showUpdateState);
   if (!IS_STICKY) {
