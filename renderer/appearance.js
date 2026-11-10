@@ -36,8 +36,7 @@ function applySettings() {
   el.smOpacity.value = s.opacity;
   applyGlass(s.opacity);
   if (!IS_STICKY) {
-    el.smAlwaysOnTop.checked = !!s.alwaysOnTop;
-    el.btnPin.classList.toggle('active', !!s.alwaysOnTop);
+    showWindowOnTop(s.alwaysOnTop);
   }
   el.smDock.checked = s.dockEnabled !== false;
   el.smAppearance.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === (s.appearance || 'manual')));

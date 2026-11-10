@@ -29,11 +29,13 @@ function seedData(dir, { notes = [], settings = {} } = {}) {
 async function launchApp({ seed, dir, env = {} } = {}) {
   const userData = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'floatnote-test-'));
   if (seed) seedData(userData, seed);
+  const launchEnv = Object.assign({}, process.env, { FLOATNOTE_USER_DATA: userData }, env);
+  delete launchEnv.ELECTRON_RUN_AS_NODE;
   const app = await _electron.launch({
     executablePath: require('electron'),
     args: [ROOT, '--no-sandbox'],
     cwd: ROOT,
-    env: Object.assign({}, process.env, { FLOATNOTE_USER_DATA: userData, ELECTRON_RUN_AS_NODE: '' }, env)
+    env: launchEnv
   });
   const errors = [];
   const watch = (p) => {

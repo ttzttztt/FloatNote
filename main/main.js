@@ -347,6 +347,7 @@ function applyPatch(patch) {
     (patch.settings.unset || []).forEach(k => { if (!MAIN_OWNED_SETTINGS.includes(k)) delete store.settings[k]; });
     const keys = [...Object.keys(set), ...(patch.settings.unset || [])];
     if (keys.some(k => !LOCAL_SETTINGS.includes(k))) store.settingsMtime = now;
+    applyWindowSettings(keys);
   }
 }
 
@@ -430,6 +431,9 @@ function mergeInto(target, other) {
    合并冲突副本时要和 data.json 比较，否则副本里的新内容只进了本机内存，另一台电脑永远看不到 */
 function applyExternal(other, compareWith = other) {
   const patch = mergeInto(store, other);
+  if (patch && patch.settings) applyWindowSettings([
+    ...Object.keys(patch.settings.set || {}), ...(patch.settings.unset || [])
+  ]);
   if (patch) broadcast('data:patched', patch);
   const mine = canonical(splitData(store).shared);
   const theirs = compareWith ? canonical(splitData(compareWith).shared) : null;
@@ -510,6 +514,7 @@ function mergeConflictCopies() {
 function reloadAllWindows(delay = 0) {
   restoring = true; // 从现在起忽略窗口发来的增量：旧页面里的改动不能混进新数据
   if (delay) { setTimeout(() => reloadAllWindows(0), delay); return; }
+  applyWindowSettings(['alwaysOnTop', 'dockEnabled']);
   const main = mainCtx && !mainCtx.win.isDestroyed() ? mainCtx : null;
   for (const c of allWindows()) if (c !== main) c.win.webContents.reload();
   if (main) {
@@ -627,6 +632,29 @@ async function pickDataDir(win, toDefault) {
 /* ============ 窗口：主窗口 + 若干“贴在桌面”的便笺窗口 ============ */
 const wins = new Map(); // webContents.id -> ctx
 let mainCtx = null;
+let mouseTimer = null;
+
+/* 由主进程统一维护穿透状态。Windows 下不能只依赖穿透窗口转发的 mousemove：
+   下层是浏览器等窗口时可能收不到事件，贴边展开、移动和唤醒也不会保证鼠标移动。 */
+function syncMouse(ctx, p = screen.getCursorScreenPoint()) {
+  if (ctx.win.isDestroyed() || !ctx.win.isVisible()) return;
+  const b = ctx.win.getBounds();
+  const inset = ctx.collapsed ? 0 : GUTTER;
+  const inside = p.x >= b.x + inset && p.x < b.x + b.width - inset
+    && p.y >= b.y + inset && p.y < b.y + b.height - inset;
+  // 选中文字、拖动或缩放时保留鼠标捕获，直到松开，避免拖出卡片后中断操作。
+  const ignore = !inside && !ctx.pointerDown && !ctx.dragging;
+  if (ignore === ctx.ignoringMouse) return;
+  ctx.win.setIgnoreMouseEvents(ignore, { forward: true });
+  ctx.ignoringMouse = ignore;
+}
+
+function startMouseWatch() {
+  mouseTimer = setInterval(() => {
+    const p = screen.getCursorScreenPoint();
+    allWindows().forEach(ctx => syncMouse(ctx, p));
+  }, 50);
+}
 
 function ctxOf(e) { return wins.get(e.sender.id) || null; }
 function broadcast(channel, payload, exceptId) {
@@ -707,6 +735,8 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
     lastProgrammatic: 0,
     minSize: { width: minW, height: minH },
     dragging: false,
+    pointerDown: false,
+    ignoringMouse: false,
     dock: null,       // { edge }
     collapsed: false,
     dockTimer: null,
@@ -714,8 +744,10 @@ function createNoteWindow({ kind, noteId = null, bounds, onTop }) {
   };
   wins.set(wcId, ctx);
 
-  win.setAlwaysOnTop(!!onTop, 'floating');
-  win.setIgnoreMouseEvents(true, { forward: true });
+  applyOnTop(ctx);
+  win.on('show', () => { applyOnTop(ctx); syncMouse(ctx); });
+  win.on('blur', () => { ctx.pointerDown = false; syncMouse(ctx); });
+  win.on('hide', () => { ctx.pointerDown = false; });
   // 便笺里的链接只能经 Ctrl+单击 交给系统浏览器打开；窗口本身不允许跳转或弹出新窗口
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -798,8 +830,7 @@ function openSticky(noteId, at) {
   if (!store.notes.some(n => n.id === noteId)) return false;
   const existing = stickyCtx(noteId);
   if (existing) {
-    existing.win.show();
-    existing.win.focus();
+    focusWindow(existing);
     return true;
   }
   let rec = store.settings.stickies[noteId];
@@ -877,6 +908,13 @@ function applyOnTop(ctx) {
     ctx.win.moveTop();
   } else {
     ctx.win.setAlwaysOnTop(userOnTop(ctx), 'floating');
+  }
+}
+
+function applyWindowSettings(keys) {
+  if (keys.includes('alwaysOnTop') && mainCtx) applyOnTop(mainCtx);
+  if (keys.includes('dockEnabled') && store.settings.dockEnabled === false) {
+    allWindows().forEach(ctx => { if (ctx.dock) undock(ctx); });
   }
 }
 
@@ -971,9 +1009,9 @@ function collapse(ctx) {
   if (!ctx.dock || ctx.collapsed) return;
   ctx.collapsed = true;
   sendDockState(ctx); // 先让页面切到“细边”样式，避免缩小时闪出内容
-  ctx.win.setIgnoreMouseEvents(false);
   ctx.win.setMinimumSize(1, 1); // 否则会被窗口最小尺寸撑大，收不成细边
   setCtxBounds(ctx, stripBounds(ctx));
+  syncMouse(ctx);
   applyOnTop(ctx);
 }
 
@@ -983,7 +1021,7 @@ function expand(ctx) {
   ctx.outSince = 0;
   ctx.win.setMinimumSize(ctx.minSize.width, ctx.minSize.height);
   setCtxBounds(ctx, fullBounds(ctx));
-  ctx.win.setIgnoreMouseEvents(true, { forward: true });
+  syncMouse(ctx);
   sendDockState(ctx);
 }
 
@@ -1025,7 +1063,13 @@ function allWindows() {
 }
 
 function toggleWindow() {
-  if (mainCtx.win.isVisible() && !mainCtx.collapsed) hideAll();
+  if (mainCtx.win.isVisible() && !mainCtx.win.isMinimized() && !mainCtx.collapsed) hideAll();
+  else showWindow();
+}
+
+function toggleWindowFromHotkey() {
+  // 快捷键唤起后台窗口；托盘菜单则按可见状态切换，不受打开菜单时失焦影响。
+  if (mainCtx.win.isFocused()) toggleWindow();
   else showWindow();
 }
 
@@ -1034,11 +1078,18 @@ function hideAll() {
 }
 
 function showWindow() {
-  if (mainCtx.collapsed) expand(mainCtx);
   allWindows().forEach(c => { if (c !== mainCtx && !c.win.isVisible()) c.win.showInactive(); });
-  mainCtx.win.show();
-  mainCtx.win.focus();
-  if (mainCtx.win.isAlwaysOnTop()) mainCtx.win.moveTop();
+  focusWindow(mainCtx);
+}
+
+function focusWindow(ctx) {
+  if (ctx.collapsed) expand(ctx);
+  if (ctx.win.isMinimized()) ctx.win.restore();
+  ctx.win.show();
+  applyOnTop(ctx);
+  ctx.win.moveTop();
+  ctx.win.focus();
+  syncMouse(ctx);
 }
 
 /* 把主窗口放回主屏中央（位置丢失时的兜底） */
@@ -1090,7 +1141,7 @@ let hotkeyInfo = { acc: HOTKEY_CANDIDATES[0], ok: false };
 let captureInfo = { acc: CAPTURE_CANDIDATES[0], ok: false };
 
 function registerHotkey(preferred) {
-  hotkeyInfo = registerWithFallback(preferred, HOTKEY_CANDIDATES, () => toggleWindow(), hotkeyInfo);
+  hotkeyInfo = registerWithFallback(preferred, HOTKEY_CANDIDATES, () => toggleWindowFromHotkey(), hotkeyInfo);
   return hotkeyInfo;
 }
 
@@ -1099,7 +1150,7 @@ function setHotkey(which, acc) {
   const isToggle = which === 'toggle';
   const cur = isToggle ? hotkeyInfo : captureInfo;
   const other = isToggle ? captureInfo : hotkeyInfo;
-  const handler = isToggle ? () => toggleWindow() : () => { quickCapture(); };
+  const handler = isToggle ? () => toggleWindowFromHotkey() : () => { quickCapture(); };
   const target = acc || (isToggle ? HOTKEY_CANDIDATES[0] : CAPTURE_CANDIDATES[0]); // 空 = 恢复默认
   if (target === cur.acc && cur.ok) return { ok: true, info: cur };
   if (other.ok && other.acc === target) return { ok: false, reason: 'duplicate', info: cur };
@@ -1128,7 +1179,7 @@ function suspendHotkeys(on) {
     globalShortcut.unregisterAll();
   } else {
     const re = (info, handler) => { if (info.ok) { try { globalShortcut.register(info.acc, handler); } catch (_) { /* ignore */ } } };
-    re(hotkeyInfo, () => toggleWindow());
+    re(hotkeyInfo, () => toggleWindowFromHotkey());
     re(captureInfo, () => { quickCapture(); });
   }
 }
@@ -1369,7 +1420,7 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip('FloatNote 便签');
   rebuildTrayMenu();
-  tray.on('click', () => toggleWindow());
+  tray.on('click', () => showWindow());
   tray.on('double-click', () => showWindow());
 }
 
@@ -1423,7 +1474,7 @@ function registerIpc() {
     return {
       kind: ctx.kind,
       noteId: ctx.noteId,
-      onTop: ctx.win.isAlwaysOnTop(),
+      onTop: userOnTop(ctx),
       dock: ctx.dock ? { edge: ctx.dock.edge, collapsed: ctx.collapsed } : null,
       stickies: Object.keys(store.settings.stickies)
     };
@@ -1469,11 +1520,14 @@ function registerIpc() {
     // 记下用户的选择；贴边期间仍保持最上层，取消贴边后按这个选择来
     if (ctx.kind === 'sticky' && store.settings.stickies[ctx.noteId]) {
       store.settings.stickies[ctx.noteId].onTop = !!v;
+      applyOnTop(ctx);
       scheduleStoreSave();
     } else if (ctx.kind === 'main') {
-      store.settings.alwaysOnTop = !!v;
+      const patch = { settings: { set: { alwaysOnTop: !!v } } };
+      applyPatch(patch);
+      scheduleStoreSave();
+      broadcast('data:patched', patch);
     }
-    applyOnTop(ctx);
     return !!v;
   });
   ipcMain.handle('win:hide', (e) => {
@@ -1529,11 +1583,15 @@ function registerIpc() {
     tryDock(ctx);
   });
   ipcMain.handle('win:menuOpen', (e, open) => { const c = ctxOf(e); if (c) c.menuOpen = !!open; });
-  ipcMain.handle('win:setIgnoreMouse', (e, ignore) => {
+  ipcMain.handle('win:syncMouse', (e) => {
     const ctx = ctxOf(e);
-    if (!ctx || ctx.collapsed) return false;
-    ctx.win.setIgnoreMouseEvents(!!ignore, { forward: true });
-    return !!ignore;
+    if (ctx) syncMouse(ctx);
+  });
+  ipcMain.handle('win:setPointerDown', (e, down) => {
+    const ctx = ctxOf(e);
+    if (!ctx) return;
+    ctx.pointerDown = !!down;
+    syncMouse(ctx);
   });
   ipcMain.handle('win:registerHotkey', (e, acc) => registerHotkey(acc));
   ipcMain.handle('win:getHotkey', () => Object.assign({}, hotkeyInfo, { capture: captureInfo }));
@@ -1585,6 +1643,7 @@ if (!gotLock) {
     registerIpc();
     createMainWindow();
     restoreStickies();
+    startMouseWatch();
     registerHotkey(store.settings.hotkey || HOTKEY_CANDIDATES[0]);
     registerCaptureHotkey(store.settings.captureHotkey || CAPTURE_CANDIDATES[0]);
     createTray();
@@ -1615,6 +1674,7 @@ if (!gotLock) {
   });
 
   app.on('will-quit', () => {
+    clearInterval(mouseTimer);
     globalShortcut.unregisterAll();
   });
 

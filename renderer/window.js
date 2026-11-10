@@ -16,17 +16,18 @@ el.btnClose.addEventListener('click', () => {
 });
 
 let stickyOnTop = true; // 桌面便笺各自记住是否置顶
+function showWindowOnTop(onTop) {
+  if (IS_STICKY) stickyOnTop = !!onTop;
+  const label = IS_STICKY ? '这张桌面便笺置顶' : '窗口置顶';
+  el.btnPin.classList.toggle('active', !!onTop);
+  el.btnPin.setAttribute('aria-pressed', String(!!onTop));
+  el.btnPin.title = onTop ? `${label}：已开启（点击取消）` : `${label}：已关闭（点击开启，保持在其他窗口上方）`;
+  if (!IS_STICKY) el.smAlwaysOnTop.checked = !!onTop;
+}
+
 el.btnPin.addEventListener('click', async () => {
-  if (IS_STICKY) {
-    stickyOnTop = await window.api.setAlwaysOnTop(!stickyOnTop);
-    el.btnPin.classList.toggle('active', stickyOnTop);
-    return;
-  }
-  state.settings.alwaysOnTop = !state.settings.alwaysOnTop;
-  await window.api.setAlwaysOnTop(state.settings.alwaysOnTop);
-  el.btnPin.classList.toggle('active', state.settings.alwaysOnTop);
-  el.smAlwaysOnTop.checked = state.settings.alwaysOnTop;
-  scheduleSave(100);
+  const current = IS_STICKY ? stickyOnTop : state.settings.alwaysOnTop;
+  showWindowOnTop(await window.api.setAlwaysOnTop(!current));
 });
 
 /* ============ 浮层（设置 / 这张便笺 / 便笺切换） ============ */
@@ -163,10 +164,7 @@ el.smAutohide.addEventListener('change', () => {
 });
 
 el.smAlwaysOnTop.addEventListener('change', async () => {
-  state.settings.alwaysOnTop = el.smAlwaysOnTop.checked;
-  await window.api.setAlwaysOnTop(state.settings.alwaysOnTop);
-  el.btnPin.classList.toggle('active', state.settings.alwaysOnTop);
-  scheduleSave(100);
+  showWindowOnTop(await window.api.setAlwaysOnTop(el.smAlwaysOnTop.checked));
 });
 
 /* ============ 开机自动启动 ============ */
@@ -326,13 +324,10 @@ document.querySelectorAll('.hotkey-btn').forEach(btn => {
 
 /* ============ 自定义拖动（工具栏） ============ */
 let dragState = null;
-let dragging = false;
-let resizing = false;
 
 el.toolbar.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button,select,input,option')) return;
   dragState = { x: e.screenX, y: e.screenY, id: e.pointerId };
-  dragging = true;
   window.api.dragStart();
   el.toolbar.setPointerCapture(e.pointerId);
   e.preventDefault();
@@ -350,9 +345,8 @@ el.toolbar.addEventListener('pointermove', (e) => {
 const endDrag = () => {
   if (!dragState) return;
   dragState = null;
-  dragging = false;
   window.api.dragEnd(); // 主进程据此判断是否贴到了屏幕边缘
-  recomputeIgnore();
+  window.api.syncMouse();
 };
 el.toolbar.addEventListener('pointerup', endDrag);
 el.toolbar.addEventListener('pointercancel', endDrag);
@@ -368,15 +362,13 @@ document.querySelectorAll('[data-edge]').forEach(handle => {
     const edge = handle.dataset.edge;
     const startX = e.screenX, startY = e.screenY;
     handle.setPointerCapture(e.pointerId);
-    resizing = true;
     window.api.resizeStart();
     const onMove = (ev) => window.api.resizeMove(edge, ev.screenX - startX, ev.screenY - startY);
     const onUp = () => {
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onUp);
-      resizing = false;
-      recomputeIgnore();
+      window.api.syncMouse();
     };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
@@ -385,24 +377,11 @@ document.querySelectorAll('[data-edge]').forEach(handle => {
 });
 
 /* ============ 透明区域点击穿透管理 ============ */
-let mouseX = -1, mouseY = -1;
-let currentlyIgnoring = true;
-
-function recomputeIgnore() {
-  const rect = el.card.getBoundingClientRect();
-  const inCard = mouseX >= rect.left && mouseX <= rect.right && mouseY >= rect.top && mouseY <= rect.bottom;
-  const shouldIgnore = !inCard;
-  if (shouldIgnore !== currentlyIgnoring) {
-    currentlyIgnoring = shouldIgnore;
-    window.api.setIgnoreMouse(shouldIgnore);
-  }
-}
-
-document.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-  if (!dragging && !resizing) recomputeIgnore();
-});
+// 转发的移动事件用于即时响应；主进程轮询负责没有移动事件时的恢复。
+document.addEventListener('mousemove', () => window.api.syncMouse());
+document.addEventListener('pointerdown', () => window.api.setPointerDown(true), true);
+document.addEventListener('pointerup', () => window.api.setPointerDown(false), true);
+document.addEventListener('pointercancel', () => window.api.setPointerDown(false), true);
 
 function formatHotkey(info) {
   if (!info || !info.acc) return '未注册';

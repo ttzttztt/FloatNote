@@ -14,9 +14,7 @@ async function init() {
   if (IS_STICKY) {
     state.activeId = STICKY_ID;
     if (!currentNote()) { window.api.closeSticky(STICKY_ID); return; }
-    stickyOnTop = !!(ctx && ctx.onTop);
-    el.btnPin.classList.toggle('active', stickyOnTop);
-    el.btnPin.title = '置顶这张桌面便笺（总在其他窗口上方）';
+    showWindowOnTop(ctx && ctx.onTop);
     el.btnClose.title = '放回便笺本';
     el.btnClose.setAttribute('aria-label', '放回便笺本');
     el.switcher.title = '双击重命名（F2）';
