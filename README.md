@@ -176,7 +176,7 @@ pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选
 
 不需要手动打标签，两种方式任选：
 
-1. **在 GitHub 上点一下**：仓库 → Actions →「打包与发布」→ Run workflow，选 `patch`（修复）/ `minor`（新功能）/ `major`（大改）。
+1. **在 GitHub 上点一下**：仓库 → Actions →「打包与发布」→ Run workflow，选 `patch`（修复）/ `minor`（新功能）/ `major`（大改）。如果版本号已改好、还没有打标签，选「发布当前版本」即可使用这个版本号重新运行检查和发布。
 2. **在本地**：
 
    ```bash

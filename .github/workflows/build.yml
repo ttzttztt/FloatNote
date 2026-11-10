@@ -14,7 +14,7 @@ on:
         description: 发布哪种版本（patch 修复 / minor 新功能 / major 大改）
         type: choice
         default: patch
-        options: [patch, minor, major, 只打包不发布]
+        options: [patch, minor, major, 发布当前版本, 只打包不发布]
   push:
     branches: [main]
     paths: [package.json]
@@ -92,7 +92,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: 改版本号并提交到 main
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.bump != '发布当前版本'
         run: |
           node scripts/bump.js "${{ inputs.bump }}"
           test "$(node -p "require('./package.json').version")" = "$V"
