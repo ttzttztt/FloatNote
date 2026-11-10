@@ -4,6 +4,19 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { launchApp, note, sleep } = require('./helpers');
 
+// Xvfb 没有窗口管理器，minimize() 不会真正进入最小化状态；Windows 仍使用原生最小化。
+const minimizeNotebook = (app) => app.evaluate(({ BrowserWindow }) => {
+  const win = BrowserWindow.getAllWindows().find(w => !w.webContents.getURL().includes('sticky'));
+  if (process.platform !== 'linux') { win.minimize(); return; }
+  const restore = win.restore.bind(win);
+  win.isMinimized = () => true;
+  win.restore = () => {
+    delete win.isMinimized;
+    delete win.restore;
+    restore();
+  };
+});
+
 describe('后台唤醒与透明窗口鼠标交互', () => {
   let t;
   const info = () => t.app.evaluate(({ BrowserWindow }) => {
@@ -89,7 +102,7 @@ describe('后台唤醒与透明窗口鼠标交互', () => {
   });
 
   it('最小化后一次唤醒即恢复', async () => {
-    await t.app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].minimize(); });
+    await minimizeNotebook(t.app);
     await sleep(150);
     await t.app.evaluate(() => globalThis.__toggleWindow());
     assert.equal((await info()).minimized, false);
@@ -179,7 +192,7 @@ describe('托盘唤醒与菜单显隐', () => {
   });
 
   it('菜单在便笺本最小化时恢复窗口', async () => {
-    await t.app.evaluate(() => globalThis.__trayMain.minimize());
+    await minimizeNotebook(t.app);
     await sleep(150);
     await toggleFromMenu();
     assert.equal(await t.app.evaluate(() => globalThis.__trayMain.isMinimized()), false);
