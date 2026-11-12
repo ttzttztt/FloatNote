@@ -194,6 +194,7 @@ describe('待办 / 列表上的退格、Delete、方向键', () => {
   const run = async (html, caret, keys) => {
     await t.page.evaluate(([html, caret]) => {
       el.editor.innerHTML = html;
+      normalizeTodoLines();
       el.editor.focus();
       const [sel, idx, where] = caret;
       const node = el.editor.querySelectorAll(sel)[idx];
@@ -206,7 +207,9 @@ describe('待办 / 列表上的退格、Delete、方向键', () => {
     return t.page.evaluate(() => {
       const mk = document.createTextNode('|');
       getSelection().getRangeAt(0).insertNode(mk);
-      const h = el.editor.innerHTML.replace(/<input type="checkbox"( checked="checked")?>/g, (m, c) => (c ? '[x]' : '[]'))
+      const copy = el.editor.cloneNode(true);
+      copy.querySelectorAll('.todo > .todo-text').forEach(body => body.replaceWith(...body.childNodes));
+      const h = copy.innerHTML.replace(/<input type="checkbox"( checked="checked")?>/g, (m, c) => (c ? '[x]' : '[]'))
         .replace(/&nbsp;/g, '_').replace(/ class="todo"/g, '.t');
       mk.remove();
       return h;

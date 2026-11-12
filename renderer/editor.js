@@ -36,13 +36,73 @@ function lineOf(node) {
 const lineCheckbox = (line) =>
   (line && line.nodeType === 1 && [...line.children].find(c => c.matches('input[type="checkbox"]'))) || null;
 
+const todoContent = line => line && [...line.children].find(c => c.matches('span.todo-text'));
+
+function isTodoContentReady(line) {
+  const cb = lineCheckbox(line), body = todoContent(line), space = cb && cb.nextSibling;
+  return body && line.childNodes.length === 3 && line.firstChild === cb && line.lastChild === body
+    && space.nodeType === 3 && space.data === '\u00a0';
+}
+
+function ensureTodoPlaceholder(body) {
+  if (!body.textContent && !body.querySelector('img,br,input')) body.appendChild(document.createElement('br'));
+}
+
+/* 把排版空格留在复选框旁边；文字单独放进一个区域，首行和折行使用同一个左边界。 */
+function ensureTodoContent(line) {
+  const cb = lineCheckbox(line);
+  if (!cb) return null;
+  let body = todoContent(line);
+  if (isTodoContentReady(line)) { ensureTodoPlaceholder(body); return body; }
+  let space = cb.nextSibling;
+  if (!space || space.nodeType !== 3 || !space.data.startsWith('\u00a0')) {
+    space = document.createTextNode('\u00a0');
+    cb.after(space);
+  } else if (space.length > 1) space.splitText(1);
+  const contents = [];
+  for (const node of [...line.childNodes]) {
+    if (node === cb || node === space) continue;
+    if (node.nodeType === 1 && node.matches('span.todo-text')) contents.push(...node.childNodes);
+    else contents.push(node);
+  }
+  if (!body) { body = document.createElement('span'); body.className = 'todo-text'; }
+  body.replaceChildren(...contents);
+  ensureTodoPlaceholder(body);
+  line.replaceChildren(cb, space, body);
+  return body;
+}
+
+/* 兼容已保存的旧待办；移动 DOM 时用标记保住选区，撤销恢复旧内容时也能使用。 */
+function normalizeTodoLines() {
+  const lines = [...el.editor.querySelectorAll('.todo')].filter(line => lineCheckbox(line) && !isTodoContentReady(line));
+  if (!lines.length) return;
+  const sel = window.getSelection();
+  let start, end, collapsed;
+  if (sel.rangeCount && el.editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    const range = sel.getRangeAt(0).cloneRange();
+    collapsed = range.collapsed;
+    start = document.createElement('span'); end = document.createElement('span');
+    const tail = range.cloneRange(); tail.collapse(false); tail.insertNode(end);
+    range.collapse(true); range.insertNode(start);
+  }
+  lines.forEach(ensureTodoContent);
+  if (start) {
+    const range = document.createRange(); range.setStartAfter(start); range.setEndBefore(end);
+    start.remove(); end.remove();
+    if (collapsed) range.collapse(true);
+    sel.removeAllRanges(); sel.addRange(range);
+  }
+}
+
 function makeTodo(line) {
   line.classList.add('todo');
-  if (lineCheckbox(line)) return;
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  line.insertBefore(document.createTextNode('\u00a0'), line.firstChild);
-  line.insertBefore(cb, line.firstChild);
+  if (!lineCheckbox(line)) {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    line.insertBefore(document.createTextNode('\u00a0'), line.firstChild);
+    line.insertBefore(cb, line.firstChild);
+  }
+  ensureTodoContent(line);
 }
 
 function unmakeTodo(line) {
@@ -55,6 +115,8 @@ function unmakeTodo(line) {
     }
     cb.remove();
   }
+  const body = todoContent(line);
+  if (body) body.replaceWith(...body.childNodes);
   line.classList.remove('todo');
   if (!line.className) line.removeAttribute('class');
   if (!line.firstChild) line.appendChild(document.createElement('br'));
@@ -201,10 +263,7 @@ function setCaret(node, offset) {
 
 /* 复选框后面那个空格之后 */
 function caretAfterCheckbox(line) {
-  const cb = lineCheckbox(line);
-  const sp = cb && cb.nextSibling;
-  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) setCaret(sp, 1);
-  else if (cb) setCaret(line, Array.prototype.indexOf.call(line.childNodes, cb) + 1);
+  if (lineCheckbox(line)) setCaret(...todoTextStart(line));
 }
 
 /* 这一行文字的末尾（最后一个文本节点的结尾；没有文字就放在复选框后面） */
@@ -225,9 +284,7 @@ function caretBeforeCheckbox(line) {
   const caret = document.createRange();
   caret.setStart(sel.anchorNode, sel.anchorOffset);
   const textStart = document.createRange();
-  const sp = cb.nextSibling;
-  if (sp && sp.nodeType === 3 && sp.data.startsWith('\u00a0')) textStart.setStart(sp, 1);
-  else textStart.setStartAfter(cb);
+  textStart.setStart(...todoTextStart(line));
   return caret.compareBoundaryPoints(Range.START_TO_START, textStart) < 0;
 }
 
@@ -271,6 +328,17 @@ el.editor.addEventListener('keydown', (e) => {
 
 /* 文字开头的位置（复选框和后面的空格之后） */
 function todoTextStart(line) {
+  const body = todoContent(line);
+  if (body) {
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: node => (node.nodeType === 3 ? node.length > 0 : /^(BR|IMG)$/.test(node.nodeName))
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+    });
+    const first = walker.nextNode();
+    if (first && first.nodeType === 3) return [first, 0];
+    if (first) return [first.parentNode, Array.prototype.indexOf.call(first.parentNode.childNodes, first)];
+    return [body, 0];
+  }
   const cb = lineCheckbox(line);
   const sp = cb.nextSibling;
   return sp && sp.nodeType === 3 && sp.data.startsWith(' ')
@@ -313,13 +381,7 @@ function caretAtEndOf(node) {
 
 /* 去掉待办行开头的复选框和空格，返回剩下的子节点 */
 function todoBody(line) {
-  const cb = lineCheckbox(line);
-  const sp = cb.nextSibling;
-  if (sp && sp.nodeType === 3) {
-    sp.data = sp.data.replace(/^ /, '');
-    if (!sp.data) sp.remove();
-  }
-  cb.remove();
+  unmakeTodo(line);
   return [...line.childNodes].filter(n => n.nodeName !== 'BR' || line.childNodes.length > 1);
 }
 
@@ -415,9 +477,10 @@ el.editor.addEventListener('keydown', (e) => {
     sel.getRangeAt(0).insertNode(mk);
     const body = todoBody(next);
     if (line.nodeType === 1) {
+      const target = todoContent(line) || line;
       // 空行只有一个 <br> 占位：接上文字后就不需要它了
-      if (line.lastChild && line.lastChild.nodeName === 'BR') line.lastChild.remove();
-      line.append(...body);
+      if (target.lastChild && target.lastChild.nodeName === 'BR') target.lastChild.remove();
+      target.append(...body);
     } else {
       next.before(...body);
     }
@@ -449,6 +512,102 @@ el.editor.addEventListener('keydown', (e) => {
     e.preventDefault();
     sel.setBaseAndExtent(sel.anchorNode, sel.anchorOffset, ...todoTextStart(line));
   }
+});
+
+/* Flex 待办行的复选框会让 Chromium 的原生 ↑ / ↓ 停在同一行，随后被光标纠正逻辑拉回。
+   使用文字实际占据的可视行定位相邻行，同时记住横向位置；不修改便笺内容或排版。 */
+function todoVisualRows(node) {
+  const rects = [];
+  const addText = (text) => {
+    if (!/[^\t\r\n ]/.test(text.data)) return;
+    const r = document.createRange();
+    r.selectNodeContents(text);
+    rects.push(...r.getClientRects());
+  };
+  if (node.nodeType === 3) addText(node);
+  else if (node.nodeType === 1) {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) addText(n);
+    for (const br of node.querySelectorAll('br')) rects.push(br.getBoundingClientRect());
+    if (!rects.some(r => r.height > 0)) rects.push(node.getBoundingClientRect());
+  }
+  const rows = [];
+  for (const r of rects.filter(r => r.height > 0).sort((a, b) => a.top - b.top || a.left - b.left)) {
+    const row = rows[rows.length - 1];
+    const center = (r.top + r.bottom) / 2;
+    if (row && Math.abs(center - (row.top + row.bottom) / 2) < Math.min(r.height, row.bottom - row.top) / 2) {
+      row.left = Math.min(row.left, r.left); row.right = Math.max(row.right, r.right);
+      row.top = Math.min(row.top, r.top); row.bottom = Math.max(row.bottom, r.bottom);
+    } else rows.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom });
+  }
+  return rows;
+}
+
+let todoVerticalCaret = null;
+const resetTodoVerticalCaret = () => { todoVerticalCaret = null; };
+el.editor.addEventListener('mousedown', resetTodoVerticalCaret);
+el.editor.addEventListener('beforeinput', resetTodoVerticalCaret);
+el.editor.addEventListener('blur', resetTodoVerticalCaret);
+el.editor.addEventListener('keydown', (e) => {
+  const direction = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+  if (!direction || e.defaultPrevented || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
+    resetTodoVerticalCaret(); return;
+  }
+  const sel = window.getSelection();
+  const root = sel.rangeCount && lineOf(sel.focusNode);
+  const hasTodo = node => node && node.nodeType === 1 && (lineCheckbox(node) || node.querySelector('.todo'));
+  if (document.activeElement !== el.editor || !root || !sel.isCollapsed
+    || !(hasTodo(root) || hasTodo(root.previousElementSibling) || hasTodo(root.nextElementSibling))) {
+    resetTodoVerticalCaret(); return;
+  }
+  const rows = todoVisualRows(root);
+  if (!rows.length) { resetTodoVerticalCaret(); return; }
+  const focus = sel.getRangeAt(0).getBoundingClientRect();
+  const fallback = todoVisualRows(caretTodoLine() || root)[0] || rows[0];
+  const center = focus.height ? (focus.top + focus.bottom) / 2 : (fallback.top + fallback.bottom) / 2;
+  const index = rows.reduce((best, row, i) => Math.abs((row.top + row.bottom) / 2 - center)
+    < Math.abs((rows[best].top + rows[best].bottom) / 2 - center) ? i : best, 0);
+  const sameCaret = todoVerticalCaret && todoVerticalCaret.node === sel.focusNode && todoVerticalCaret.offset === sel.focusOffset;
+  const column = sameCaret ? todoVerticalCaret.x : focus.height ? focus.left : fallback.left;
+  let targetRoot = root;
+  let target = rows[index + direction];
+  while (!target) {
+    targetRoot = direction < 0 ? targetRoot.previousSibling : targetRoot.nextSibling;
+    if (!targetRoot) break;
+    const adjacent = todoVisualRows(targetRoot);
+    target = direction < 0 ? adjacent[adjacent.length - 1] : adjacent[0];
+  }
+  if (target) {
+    // 命中测试只接受视口内的坐标，因此先滚动到目标文字行。
+    const viewport = el.editor.getBoundingClientRect();
+    const padding = getComputedStyle(el.editor);
+    const top = viewport.top + parseFloat(padding.paddingTop);
+    const bottom = viewport.bottom - parseFloat(padding.paddingBottom);
+    const oldScroll = el.editor.scrollTop;
+    if (target.top < top) el.editor.scrollTop -= top - target.top + 1;
+    else if (target.bottom > bottom) el.editor.scrollTop += target.bottom - bottom + 1;
+    const shift = oldScroll - el.editor.scrollTop;
+    const x = Math.max(target.left + .25, Math.min(column, target.right - .25));
+    const r = document.caretRangeFromPoint(x, (target.top + target.bottom) / 2 + shift);
+    if (!r || !targetRoot.contains(r.startContainer)) {
+      el.editor.scrollTop = oldScroll;
+      resetTodoVerticalCaret(); return;
+    }
+    e.preventDefault();
+    setCaret(r.startContainer, r.startOffset);
+    // 软换行处的同一 DOM 位置也可能显示为上一行行尾；进入目标行的第一个字素，避免停在边界。
+    const placed = sel.getRangeAt(0).getBoundingClientRect();
+    const targetCenter = (target.top + target.bottom) / 2 + shift;
+    if (placed.height && Math.abs((placed.top + placed.bottom) / 2 - targetCenter)
+      > Math.min(placed.height, target.bottom - target.top) / 2) sel.modify('move', 'forward', 'character');
+  } else {
+    e.preventDefault();
+    if (direction < 0) setCaret(root, 0);
+    else setCaretLineEnd(root);
+  }
+  const line = caretTodoLine();
+  if (line && caretBeforeCheckbox(line)) caretAfterCheckbox(line);
+  todoVerticalCaret = { x: column, node: sel.focusNode, offset: sel.focusOffset };
 });
 
 // 真要输入时再兜底一次：光标还在复选框前面，就先挪到文字开头再输入
@@ -484,23 +643,54 @@ function caretLine() {
   return lineOf(sel.anchorNode);
 }
 
-el.editor.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
-  const line = caretLine();
-  if (!line || !lineCheckbox(line)) return;
-  if (!line.textContent.replace(/\u00a0/g, ' ').trim()) {
-    e.preventDefault();
-    Undo.before();
-    unmakeTodo(line);
-    const r = document.createRange();
-    r.setStart(line, 0);
-    r.collapse(true);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(r);
-    Undo.record();
-    scheduleSave(100);
+function continueTodo() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || document.activeElement !== el.editor) return false;
+  let range = sel.getRangeAt(0), line = lineOf(range.startContainer), atEnd = false;
+  if (range.collapsed && range.startContainer === el.editor) {
+    const previous = el.editor.childNodes[range.startOffset - 1];
+    line = lineCheckbox(previous) ? previous : el.editor.childNodes[range.startOffset];
+    atEnd = line === previous;
   }
+  if (!lineCheckbox(line) || (!range.collapsed && lineOf(range.endContainer) !== line)) return false;
+  normalizeTodoLines();
+  const body = todoContent(line);
+  if (sel.isCollapsed && !body.contains(sel.focusNode)) {
+    if (atEnd || (sel.focusNode === line && sel.focusOffset >= line.childNodes.length)) setCaretLineEnd(line);
+    else caretAfterCheckbox(line);
+  }
+  range = sel.getRangeAt(0);
+  if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return false;
+  Undo.before();
+  if (range.collapsed && !body.textContent.trim() && !body.querySelector('img,input')) {
+    unmakeTodo(line);
+    setCaret(line, 0);
+  } else {
+    window.Paste.linkifyBeforeCaret(el.editor, 0);
+    range = sel.getRangeAt(0);
+    range.deleteContents();
+    const tail = document.createRange();
+    tail.selectNodeContents(body); tail.setStart(range.startContainer, range.startOffset);
+    const contents = tail.extractContents();
+    const next = document.createElement('div');
+    makeTodo(next); setIndent(next, Number(line.dataset.indent) || 0);
+    const nextBody = todoContent(next);
+    nextBody.replaceChildren(contents);
+    ensureTodoPlaceholder(body); ensureTodoPlaceholder(nextBody);
+    line.after(next);
+    caretAfterCheckbox(next);
+    next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  Undo.record(); scheduleSave(100);
+  return true;
+}
+
+el.editor.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.defaultPrevented && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey
+    && !e.isComposing && e.keyCode !== 229 && continueTodo()) e.preventDefault();
+});
+el.editor.addEventListener('beforeinput', e => {
+  if (e.inputType === 'insertParagraph' && !e.defaultPrevented && !e.isComposing && continueTodo()) e.preventDefault();
 });
 
 /* Markdown 式快捷输入：行首输入标记再敲空格即转换
@@ -583,6 +773,7 @@ function unwrapList() {
 }
 
 el.editor.addEventListener('input', (e) => {
+  if ((e.inputType || '').startsWith('delete')) normalizeTodoLines();
   if (e.inputType === 'insertText' && e.data && /^[\s\u3000]$/.test(e.data)) markdownShortcut();
 });
 
@@ -594,13 +785,7 @@ el.editor.addEventListener('input', (e) => {
   if ((a.nodeType === 3 ? a.parentElement : a).closest('li, h2, h3')) return;
   // 新行继承了 todo 但没有复选框：补上，并把光标放到复选框后
   makeTodo(line);
-  const sp = lineCheckbox(line).nextSibling;
-  const r = document.createRange();
-  r.setStart(sp, 1);
-  r.collapse(true);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(r);
+  caretAfterCheckbox(line);
 });
 
 /* 在光标处插入图片，后面跟一个换行，光标放到图片之后（接着打字在图片下方）；
@@ -861,7 +1046,7 @@ el.editor.addEventListener('input', (e) => {
   }
 });
 el.editor.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.isComposing) window.Paste.linkifyBeforeCaret(el.editor, 0);
+  if (e.key === 'Enter' && !e.defaultPrevented && !e.isComposing) window.Paste.linkifyBeforeCaret(el.editor, 0);
 });
 el.editor.addEventListener('click', (e) => {
   const a = e.target.closest && e.target.closest('a');

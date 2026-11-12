@@ -412,6 +412,7 @@ body.mode-sticky .tag-bar.no-tags .tag-add { left: 16px; top: -2px; }
 .editor {
   flex: 1;
   overflow-y: auto;
+  scroll-padding-block: 16px 34px;
   padding: 16px 20px 34px; /* 底部给状态栏留位置 */
   outline: none;
   font-size: var(--font-size);
@@ -450,7 +451,9 @@ body.collapsed .card { outline-color: transparent; }
   margin: 6px 0;
   display: block;
 }
-.editor .todo { display: flex; align-items: flex-start; gap: 5px; margin-block: 3px; } /* 只设上下，左边距留给缩进 */
+.editor .todo { display: flex; align-items: flex-start; gap: 0; margin-block: 3px; } /* 只设上下，左边距留给缩进 */
+.editor .todo > .todo-text { flex: 1; min-width: 0; }
+.editor .todo > .todo-text > :is(div, p) { margin-block: 0; }
 /* 自绘复选框：圆角方块 + 主题色勾选，替代系统默认灰框 */
 .editor .todo input[type="checkbox"] {
   -webkit-appearance: none;
@@ -458,7 +461,7 @@ body.collapsed .card { outline-color: transparent; }
   font-size: inherit;
   width: 16px;
   height: 16px;
-  margin: calc(.825em - 8px) 0 0; /* 与首行文字垂直居中（行高 1.65） */
+  margin: calc(.825em - 8px) 5px 0 0; /* 与首行文字垂直居中（行高 1.65） */
   flex-shrink: 0;
   border: 1.5px solid var(--field-border);
   border-radius: 5px;

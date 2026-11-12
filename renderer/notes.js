@@ -184,6 +184,7 @@ function syncCheckboxAttrs() {
 function loadActiveNote(animate = true) {
   const note = currentNote();
   el.editor.innerHTML = note ? (note.content || '') : '';
+  normalizeTodoLines();
   if (note) {
     // 以浏览器序列化后的 HTML 为基准，避免 checked → checked="checked" 之类的差异被当成“编辑”
     syncCheckboxAttrs();

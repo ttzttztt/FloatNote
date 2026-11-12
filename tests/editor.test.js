@@ -27,7 +27,7 @@ describe('编辑器', () => {
     await t.page.keyboard.press('Control+A');
     await t.page.keyboard.press('Control+Shift+T');
     assert.equal(await t.page.locator('#editor .todo input').count(), 3);
-    assert.match(await t.html(), /&nbsp;1<\/div>.*&nbsp;2<\/div>.*&nbsp;3<\/div>/);
+    assert.deepEqual(await t.page.$$eval('#editor > .todo > .todo-text', nodes => nodes.map(n => n.textContent)), ['1', '2', '3']);
     await t.page.keyboard.press('Control+Shift+T');
     assert.equal(await t.html(), '<div>1</div><div>2</div><div>3</div>');
   });
@@ -52,7 +52,7 @@ describe('编辑器', () => {
     assert.match(h, /<h2>标题<\/h2>/);
     assert.match(h, /<ul><li>列表<\/li><\/ul>/);
     assert.match(h, /<ol><li>第一<\/li><\/ol>/);
-    assert.match(h, /class="todo"><input type="checkbox">&nbsp;待办/);
+    assert.equal(await t.page.locator('#editor > .todo > .todo-text').first().textContent(), '待办');
   });
 
   it('Tab / Shift+Tab 缩进，行首退格取消缩进，回车保持缩进', async () => {
@@ -174,7 +174,7 @@ describe('编辑器', () => {
 
   it('待办行：点行尾空白处打字在行尾，Home 键不会跑到复选框前面，点文字中间和复选框照常', async () => {
     const content = '<div class="todo"><input type="checkbox">&nbsp;品牌同步</div><div class="todo" data-indent="1"><input type="checkbox">&nbsp;缩进的待办</div>';
-    const setup = () => t.page.evaluate((c) => { el.editor.innerHTML = c; }, content);
+    const setup = () => t.page.evaluate((c) => { el.editor.innerHTML = c; normalizeTodoLines(); }, content);
     const box = async (i) => t.page.locator('#editor > .todo').nth(i).boundingBox();
     // 行尾右侧空白处：光标直接出现在行尾，中途从不出现在复选框前面（否则会看到光标从头跳到尾）
     for (const i of [0, 1]) {
@@ -193,7 +193,7 @@ describe('编辑器', () => {
       await sleep(50);
       assert.ok(!(await t.page.evaluate(() => window.__caretLog)).includes('before'), '光标没有先跑到复选框前面');
       await t.page.keyboard.type('X');
-      assert.match(await t.html(), i ? /缩进的待办X<\/div>/ : /品牌同步X<\/div>/);
+      assert.equal(await t.page.locator('#editor > .todo > .todo-text').nth(i).textContent(), i ? '缩进的待办X' : '品牌同步X');
     }
     // Home 键
     await setup();
@@ -201,17 +201,17 @@ describe('编辑器', () => {
     await t.page.mouse.click(b0.x + b0.width - 20, b0.y + b0.height / 2);
     await t.page.keyboard.press('Home');
     await t.page.keyboard.type('Y');
-    assert.match(await t.html(), /^<div class="todo"><input type="checkbox">&nbsp;Y品牌同步<\/div>/);
+    assert.equal(await t.page.locator('#editor > .todo > .todo-text').first().textContent(), 'Y品牌同步');
     // 点在文字中间：不挪动
     await setup();
     const word = await t.page.evaluate(() => {
-      const tn = el.editor.querySelector('.todo').lastChild;
-      const r = document.createRange(); r.setStart(tn, 3); r.setEnd(tn, 4);
+      const tn = el.editor.querySelector('.todo-text').firstChild;
+      const r = document.createRange(); r.setStart(tn, 2); r.setEnd(tn, 3);
       const rc = r.getBoundingClientRect(); return { x: rc.left + 1, y: rc.top + rc.height / 2 };
     });
     await t.page.mouse.click(word.x, word.y);
     await t.page.keyboard.type('Z');
-    assert.match(await t.html(), /&nbsp;品牌Z同步|&nbsp;品Z牌同步/);
+    assert.match(await t.page.locator('#editor > .todo > .todo-text').first().textContent(), /品牌Z同步|品Z牌同步/);
     // 复选框本身照常勾选
     await setup();
     await t.page.locator('#editor .todo input').first().click();

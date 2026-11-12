@@ -36,8 +36,9 @@ async function init() {
 
   Undo.init({
     editor: el.editor,
-    serialize: () => { syncCheckboxAttrs(); return el.editor.innerHTML; },
+    serialize: () => { el.editor.normalize(); syncCheckboxAttrs(); return el.editor.innerHTML; },
     onApply: () => {
+      normalizeTodoLines();
       saveCurrentContent();
       renderSwitcher();
       updateStatus();
