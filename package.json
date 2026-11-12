@@ -1,6 +1,6 @@
 {
   "name": "floatnote",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "轻量桌面便签应用（FloatNote）：全局快捷键、置顶悬浮、透明窗口、剪贴板图片粘贴、标签与待办清单。",
   "main": "main/main.js",
   "scripts": {
