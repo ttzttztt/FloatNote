@@ -1,69 +1,76 @@
-# 更新记录
+# Changelog
 
-每次发布时，「未发布」里的内容会自动变成这一版的 Release 说明。
-写给使用者看：说清楚改了什么、对他有什么影响，不写代码细节。
+**English** | [简体中文](CHANGELOG.zh-CN.md)
 
-## 未发布
+On each release, the Unreleased section becomes the English half of that version's release notes. The Chinese half comes from the 未发布 section of [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
+Keep both files up to date. Write for people who use the app: say what changed and what it means for them, and leave out code details.
 
-## v1.0.6（2026-11-12）
+## Unreleased
 
-### 外观
+### Added
 
-- 圆角统一成一套尺度：卡片、菜单、按钮由外到内逐级变小，看起来更协调；桌面小便笺的圆角小一号。
-- 正在操作的便笺不再有一圈蓝色描边，改成边框略带主题色、阴影更实；阴影不再被窗口边缘截断。
-- 横线、方格、点阵纸上，标题、待办、列表都落在格线上。
-- 长便笺的滚动条换成细的圆头样式，平时很淡，鼠标移上去才明显。
-- 设置里的勾选框换成滑动开关；菜单弹出时有轻微的动画；切换列表更宽，标题能多显示几个字。
-- 右下角的缩放手柄换成沿着圆角的一小段弧线；快速捕捉的引用块、已完成待办的删除线、标签上的「×」都更柔和。
+- English interface. The language follows your system by default, and you can pick Auto, 中文 or English under Settings → Language. The tray menu, system dialogs, notifications and the welcome note switch with it.
+- The installer shows English or Chinese to match the system language.
 
-## v1.0.5（2026-11-12）
+## v1.0.6 (2026-11-12)
 
-### 修复
+### Appearance
 
-- 长待办首行与自动折行的文字保持对齐，字号、缩进和加粗等行内格式不再造成错位。
-- 带加粗、粘贴段落等内容的待办在行末按回车，也会稳定续出独立的新待办。
-- 待办中间回车保留前后文字与格式，新的待办保留缩进并默认未勾选，支持撤销与重做。
-- 兼容已保存的旧待办，保留文字及勾选状态；Shift+回车继续用于同一条待办内换行。
-- 空待办上方也能用 ↑ 正常到达，不再在下一条待办的行首、行尾之间反复跳动。
-- 长待办的 ↑ / ↓ 按屏幕上的文字行移动，保留光标横向位置；连续空待办、缩进和行内格式也能正常经过。
-- 连续上下移动长便笺时保持光标可见，鼠标或左右键重新定位后使用新的横向位置。
+- Corner radii follow one scale: the card, menus and buttons step down from the outside in, so they look consistent. Desktop notes use a slightly smaller radius.
+- The active note no longer has a blue outline. Its border picks up a hint of the theme color and its shadow gets a little stronger. Shadows are no longer cut off at the window edge.
+- On ruled, grid and dotted paper, headings, to-dos and lists sit on the lines.
+- Long notes get a thin, rounded scrollbar that stays faint until you hover over the note.
+- Checkboxes in Settings are now toggle switches. Menus open with a subtle animation. The switcher list is wider, so titles show more text.
+- The resize handle is a short arc that follows the corner. Captured quotes, the strikethrough on finished to-dos and the "×" on tags are all softer.
 
-## v1.0.4（2026-11-10）
+## v1.0.5 (2026-11-12)
 
-### 修复
+### Fixed
 
-- 便笺在浏览器上方时可以正常点击、拖选文字，拖选到卡片外也不会中断。
-- 后台、隐藏或收起的便笺本按一次快捷键就能唤起；已经在前台时再次按下则隐藏。
-- 图钉、设置面板和实际窗口的置顶状态保持一致，重启、唤醒和同步设置后会恢复各个窗口的选择。
-- 贴边期间的临时置顶不会改动用户的置顶选择，离开贴边后恢复原设置。
-- 单击托盘图标始终唤起便笺，托盘菜单「显示 / 隐藏便签」在打开菜单失焦后也能正常隐藏窗口。
-- 图钉提示会明确显示「已开启 / 已关闭」。希望便笺一直在浏览器上方时，请开启「窗口置顶」。
+- The first line of a long to-do stays aligned with its wrapped lines. Font size, indentation and inline formatting such as bold no longer shift it.
+- Pressing Enter at the end of a to-do that contains bold text or pasted paragraphs reliably starts a new, separate to-do.
+- Pressing Enter in the middle of a to-do keeps the text and formatting on both sides. The new to-do keeps the indentation and starts unchecked. Undo and redo work.
+- To-dos saved by earlier versions keep their text and checked state. Shift+Enter still adds a line break inside a to-do.
+- The Up arrow can reach the line above an empty to-do. The caret no longer jumps back and forth between the start and end of the next to-do.
+- Up and Down move by visual line inside long to-dos and keep the caret's horizontal position. Consecutive empty to-dos, indentation and inline formatting no longer get in the way.
+- The caret stays visible while you move up and down through a long note. After you reposition it with the mouse or the Left and Right keys, the new horizontal position is used.
 
-## v1.0.3（2026-11-09）
+## v1.0.4 (2026-11-10)
 
-### 修复
+### Fixed
 
-- 待办开头按一次退格就能去掉复选框（以前要按两次，光标还会跑到复选框前面）
-- 上一行末尾按 Delete，会把下一行待办的文字接过来，不再留下半截待办
-- 待办开头按左方向键不再卡住；Shift+Home 不再选中复选框
-- 列表开头按退格：先去掉圆点或编号，文字留在原来那行
-- 窗口很窄时，工具栏右侧的按钮不再被挤出去
-- 更新后桌面图标不再停留在旧图标
+- When a note sits above your browser, you can click it and drag to select text. Dragging past the edge of the card no longer breaks the selection.
+- One press of the hotkey brings the notebook back when it is in the background, hidden or docked. Pressing it again while the notebook is in front hides it.
+- The pin button, the Settings panel and the actual window state stay in agreement. Each window's choice is restored after a restart, after waking from sleep and after settings sync.
+- The temporary always-on-top state used while docked does not change your own setting, which comes back when the note leaves the edge.
+- Clicking the tray icon always shows the notebook. The tray menu's show/hide item hides the window correctly even though opening the menu takes focus away.
+- The pin button's tooltip says whether it is on or off. Turn on Always on top if you want a note to stay above your browser.
 
-### 新增
+## v1.0.3 (2026-11-09)
 
-- 圆点列表 `Ctrl+Shift+8`，编号列表 `Ctrl+Shift+7`；也可以在行首输入 `- ` 或 `1. `
-- 设置里的「便笺保存在」显示便笺实际保存的完整路径，可以直接打开这个文件夹
-- 「⋯」菜单里加了「删除这张便笺」
+### Fixed
 
-## v1.0.2（2026-11-09）
+- One Backspace at the start of a to-do removes the checkbox. It used to take two, and the caret jumped in front of the checkbox.
+- Delete at the end of a line pulls up the text of the to-do below, instead of leaving half a to-do behind.
+- The Left arrow no longer gets stuck at the start of a to-do. Shift+Home no longer selects the checkbox.
+- Backspace at the start of a list item removes the bullet or number first and leaves the text on its line.
+- In a very narrow window, the buttons on the right side of the toolbar are no longer pushed out of view.
+- The desktop icon no longer keeps showing the old icon after an update.
 
-第一个公开发布的版本。
+### Added
 
-- 第一次打开时有一张欢迎便笺，跟着勾一遍就会用了
-- 工具栏「待办」按钮；鼠标移到便笺上可以直接「＋ 标签」
-- 工具栏「⋯」里是这张便笺自己的设置：颜色、纸张、重命名、标签、贴到桌面
-- 四条边、四个角都能拖动调整大小
-- `Ctrl+N` 新建便笺，`Ctrl+F` 搜索便笺
-- 撤销提示条移到底部，不再挡住正文
-- 「置顶」只指窗口总在最上层；列表里把便笺排到最前改叫「固定」，用星标表示
+- Bullet list with `Ctrl+Shift+8`, numbered list with `Ctrl+Shift+7`. Typing `- ` or `1. ` at the start of a line also works.
+- Settings shows the full path of the folder where your notes are saved, with a button to open it.
+- The note's ⋯ menu has a "Delete this note" item.
+
+## v1.0.2 (2026-11-09)
+
+The first public release.
+
+- A welcome note on first launch walks you through the basics with a short checklist.
+- A To-do button in the toolbar. Hover a note to add a tag directly.
+- The ⋯ button in the toolbar holds settings for the current note: color, paper, rename, tags and stick to desktop.
+- Resize from any edge or corner.
+- `Ctrl+N` creates a note, `Ctrl+F` searches your notes.
+- The Undo prompt moved to the bottom, so it no longer covers your text.
+- "Always on top" now refers only to the window staying above others. Keeping a note first in the list is a separate star button.

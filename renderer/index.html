@@ -57,7 +57,7 @@
     <div class="tag-bar" id="tag-bar"></div>
 
     <div class="editor" id="editor" contenteditable="true" spellcheck="false"
-         data-placeholder="记录点什么…"></div>
+         data-placeholder="记录点什么…" data-placeholder-focus="开始输入…"></div>
 
     <div class="status-bar" id="status-bar" aria-live="off"></div>
 
@@ -112,6 +112,13 @@
   <!-- 应用设置浮层：只放对所有便笺都生效的设置 -->
   <div id="settings-menu" class="menu hidden">
     <div class="pm-title">设置</div>
+    <div class="pm-row"><span>语言</span>
+      <span class="seg" id="sm-language">
+        <button data-lang="auto" title="跟随系统语言">自动</button>
+        <button data-lang="zh">中文</button>
+        <button data-lang="en">English</button>
+      </span>
+    </div>
     <div class="pm-row"><span>外观</span>
       <span class="seg" id="sm-appearance">
         <button data-mode="manual" title="始终使用便笺自己的颜色">手动</button>
@@ -160,6 +167,8 @@
     </details>
   </div>
 
+  <!-- 语言最先加载：定下界面语言，并把上面写死的中文换成译文 -->
+  <script src="i18n.js"></script>
   <script src="life.js"></script>
   <script src="history.js"></script>
   <script src="paste.js"></script>

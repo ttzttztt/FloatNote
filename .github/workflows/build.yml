@@ -6,7 +6,8 @@ name: 打包与发布
 # 2. 本地 pnpm release patch，再 git push origin main：package.json 的版本号变了就自动发布这个版本
 # 选「只打包不发布」时：跑测试和打包，产物在这次运行的 Artifacts 里下载，不发布。
 #
-# 更新说明取自 CHANGELOG.md 的「未发布」一节（发布时自动改名为这个版本）；没写就用上一版以来的提交说明。
+# 更新说明是中英双语的：英文取自 CHANGELOG.md 的 Unreleased，中文取自 CHANGELOG.zh-CN.md 的「未发布」
+# （发布时这两节自动改名为这个版本）；都没写就用上一版以来的提交说明。
 on:
   workflow_dispatch:
     inputs:

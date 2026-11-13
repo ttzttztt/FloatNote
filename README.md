@@ -18,9 +18,7 @@
 
 <p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
 
-![FloatNote: the notebook window and two notes stuck to the desktop](docs/images/overview.jpg)
-
-> The interface is currently in Simplified Chinese, as shown in the screenshots.
+![FloatNote: the notebook window and two notes stuck to the desktop](docs/images/overview.en.jpg)
 
 ## Highlights
 
@@ -32,6 +30,7 @@
 - **Six colors, five papers.** Glass, yellow, mint, pink, kraft or dark; plain, ruled, grid, dotted or dog-eared. Each note has its own.
 - **Local-first.** Notes stay on your computer. Daily backups, a 30-day trash, and optional sync through any cloud folder you already use.
 - **Updates itself.** The installed version downloads new releases in the background.
+- **English and Chinese.** The interface follows your system language, and you can switch it in Settings.
 
 ## Download
 
@@ -59,11 +58,11 @@ macOS builds are not published or tested. The project can be built from source t
 - **Clean paste**: content from web pages and Word keeps its structure (paragraphs, headings, lists, bold, links) and drops fonts, colors and backgrounds. `Ctrl+Shift+V` pastes plain text.
 - **Links**: URLs become links as you type. `Ctrl`+click opens them in your browser.
 - **Undo and redo** cover everything, including to-do toggles, indentation, pastes and captures. Each note has its own history.
-- **Tags**: hover a note and click **＋ 标签** (add tag), or press `Ctrl+Shift+L`.
+- **Tags**: hover a note and click **+ Tag**, or press `Ctrl+Shift+L`.
 
 ### Notes on your desktop
 
-![Edge docking: a thin tab at the screen edge (left) slides out when the pointer touches it (right)](docs/images/dock.jpg)
+![Edge docking: a thin tab at the screen edge (left) slides out when the pointer touches it (right)](docs/images/dock.en.jpg)
 
 - **Stick to desktop**: from the note's **⋯** menu, or by dragging a note out of the switcher list. Each desktop note remembers its position, size and pin state across restarts. All windows edit the same data and stay in sync.
 - **Edge docking**: drag the notebook or a desktop note to the left, right or top edge. It collapses into a tab when the pointer leaves and expands when the pointer returns. Docked tabs stay above other windows and never overlap each other.
@@ -73,15 +72,16 @@ macOS builds are not published or tested. The project can be built from source t
 
 ### Look and feel
 
-![Six colors with plain, ruled, grid, dotted and dog-eared paper](docs/images/themes.jpg)
+![Six colors with plain, ruled, grid, dotted and dog-eared paper](docs/images/themes.en.jpg)
 
 - **Colors and paper are per note**, set from the note's **⋯** menu. On ruled, grid and dotted paper, text sits on the lines.
 - **Appearance** can follow the system dark mode or the time of day (warmer in the morning, dark at night).
 - **Quiet by default**: the toolbar fades out when the pointer leaves the note, so only your text remains. This can be turned off.
 - **Adjustable** font size (12–22 px) and background opacity.
+- **Language**: English or Simplified Chinese. It follows the system language by default; change it under Settings → Language. The tray menu, dialogs and notifications switch with it.
 - Bundled font: [LXGW WenKai Screen](https://github.com/lxgw/LxgwWenKai-Screen), a handwriting-style typeface that suits a paper note.
 
-![The note menu holds settings for this note only](docs/images/note-menu.jpg)
+![The note menu holds settings for this note only](docs/images/note-menu.en.jpg)
 
 ### Organizing
 
@@ -194,13 +194,14 @@ This builds installers for the current system into `release/`. Use `pnpm dist:wi
 
 ### Release
 
-Releases are fully automated by [`.github/workflows/build.yml`](.github/workflows/build.yml). Open **Actions**, choose the 打包与发布 (build and release) workflow, click **Run workflow** and pick `patch`, `minor` or `major`. It bumps the version, runs the tests, tags the commit, builds for Windows and Linux, and publishes the release. Release notes are taken from the unreleased section at the top of [`CHANGELOG.md`](CHANGELOG.md).
+Releases are fully automated by [`.github/workflows/build.yml`](.github/workflows/build.yml). Open **Actions**, choose the 打包与发布 (build and release) workflow, click **Run workflow** and pick `patch`, `minor` or `major`. It bumps the version, runs the tests, tags the commit, builds for Windows and Linux, and publishes the release. Release notes are bilingual: the English part comes from the Unreleased section of [`CHANGELOG.md`](CHANGELOG.md), the Chinese part from the 未发布 section of [`CHANGELOG.zh-CN.md`](CHANGELOG.zh-CN.md). Add an entry to both when you change something users will notice.
 
 ### Project layout
 
 ```
 main/        Main process: data store and merge, windows, docking, tray, hotkeys, updates
 renderer/    The note UI: editor, menus, themes, undo history, paste cleanup
+             renderer/i18n.js holds the English translations; UI strings are written in Chinese in the source and looked up there
 scripts/     Start, package and release helpers
 tests/       End-to-end tests
 assets/      App icons
@@ -211,7 +212,6 @@ docs/images/ Screenshots used in the READMEs
 
 - The frosted-glass look is drawn with CSS (translucency, highlights and grain). It lets the desktop's colors show through but does not blur what is behind the window.
 - Quick capture copies the selection automatically only on Windows.
-- The interface is available in Simplified Chinese only.
 
 ## License
 

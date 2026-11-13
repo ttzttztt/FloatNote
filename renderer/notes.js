@@ -10,7 +10,7 @@ function newNote() {
   if (isNoteEmpty(currentNote())) {
     closeMenus();
     el.editor.focus();
-    toast('当前便笺还是空的，直接写吧');
+    toast(t('当前便笺还是空的，直接写吧'));
     return;
   }
   const note = blankNote();
@@ -25,22 +25,22 @@ function newNote() {
 /* 第一次打开时的欢迎便笺：用几条待办带用户把主要功能走一遍，勾完删掉即可 */
 function welcomeNote(hk) {
   const key = (info, fallback) => (info && info.ok && info.acc ? '<strong>' + escapeHtml(formatHotkey(info)) + '</strong>' : fallback);
-  const toggle = key(hk, '唤起快捷键');
-  const capture = key(hk && hk.capture, '快速捕捉快捷键');
+  const toggle = key(hk, t('唤起快捷键'));
+  const capture = key(hk && hk.capture, t('快速捕捉快捷键'));
   const todo = (html) => `<div class="todo"><input type="checkbox">\u00a0${html}</div>`;
   const note = blankNote();
-  note.title = '欢迎使用 FloatNote';
+  note.title = t('欢迎使用 FloatNote');
   note.content = [
-    '<div>你好！这是一张便笺，写下的内容会自动保存。跟着下面几步熟悉一下，做完一件就勾掉一件：</div>',
-    todo(`在任何程序里按 ${toggle}，隐藏或唤回这个窗口`),
-    todo('点工具栏上的「待办」按钮，把一行文字变成可以勾选的待办'),
-    todo('点「⋯」给这张便笺换个颜色、换种纸张'),
-    todo('把窗口拖到屏幕左边或右边，它会收成一条细边，鼠标移过去就展开'),
-    todo(`在浏览器里选中一段文字，按 ${capture}，它会被收进当前便笺`),
-    todo('点「⋯」→「贴到桌面」，把一张便笺单独贴在桌面上'),
+    '<div>' + t('你好！这是一张便笺，写下的内容会自动保存。跟着下面几步熟悉一下，做完一件就勾掉一件：') + '</div>',
+    todo(t('在任何程序里按 {0}，隐藏或唤回这个窗口', toggle)),
+    todo(t('点工具栏上的「待办」按钮，把一行文字变成可以勾选的待办')),
+    todo(t('点「⋯」给这张便笺换个颜色、换种纸张')),
+    todo(t('把窗口拖到屏幕左边或右边，它会收成一条细边，鼠标移过去就展开')),
+    todo(t('在浏览器里选中一段文字，按 {0}，它会被收进当前便笺', capture)),
+    todo(t('点「⋯」→「贴到桌面」，把一张便笺单独贴在桌面上')),
     '<div><br></div>',
-    '<div>小技巧：行首输入「- 」（减号加空格）变成圆点列表，「1. 」变成编号列表，「[] 」变成待办；在列表开头按退格可以去掉圆点。</div>',
-    '<div>右上角「设置」里可以改快捷键、透明度，看便笺保存在哪个文件夹，还有全部快捷键的说明。看完点垃圾桶删掉这张就好。</div>'
+    '<div>' + t('小技巧：行首输入「- 」（减号加空格）变成圆点列表，「1. 」变成编号列表，「[] 」变成待办；在列表开头按退格可以去掉圆点。') + '</div>',
+    '<div>' + t('右上角「设置」里可以改快捷键、透明度，看便笺保存在哪个文件夹，还有全部快捷键的说明。看完点垃圾桶删掉这张就好。') + '</div>'
   ].join('');
   return note;
 }
@@ -74,7 +74,7 @@ function deleteNote() {
   loadActiveNote();
   scheduleSave(100);
   if (!wasEmpty) {
-    toastAction('已移到「最近删除」', '撤销', () => restoreNote(note.id));
+    toastAction(t('已移到「最近删除」'), t('撤销'), () => restoreNote(note.id));
   }
 }
 
@@ -117,7 +117,7 @@ async function stickNote(id, x, y) {
   persist();
   const note = state.notes.find(n => n.id === id);
   if (!note) return;
-  if (isNoteEmpty(note)) { toast('先写点什么再贴到桌面吧'); return; }
+  if (isNoteEmpty(note)) { toast(t('先写点什么再贴到桌面吧')); return; }
   const ok = await window.api.openSticky(id, x, y);
   if (!ok) return;
   state.stuck.add(id);

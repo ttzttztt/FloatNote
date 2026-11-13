@@ -51,6 +51,7 @@
 ![工具栏「⋯」里是这张便笺自己的设置](docs/images/note-menu.jpg)
 
 - **两个菜单**：工具栏「⋯」是这张便笺自己的设置（颜色、纸张、重命名、添加标签、固定在列表最前、贴到桌面）；右上角「设置」只放对所有便笺都生效的选项（外观、字号、透明度、窗口置顶、快捷键、便笺保存在哪里等），全部快捷键收在最下面的「全部快捷键」里。
+- **语言**：界面支持中文和英文，默认跟随系统语言，可在「设置 → 语言」里选 自动 / 中文 / English；托盘菜单、系统对话框、通知跟着切换。
 - **界面细节**：鼠标移开卡片时工具栏淡出，只留内容（可在设置中关闭）；右下角状态栏显示「字数 · 编辑于 N 分钟前」；新建 / 切换便笺时内容轻微淡入；设置里可调字号（12–22px）。
 
 ![六种颜色，搭配素纸、横线、方格、点阵、折角](docs/images/themes.jpg)
@@ -202,7 +203,7 @@ pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选
 
 之后全部自动完成（`.github/workflows/build.yml`）：改版本号并提交到 main → 跑一遍测试（不通过就不发布）→ 打标签 → 在 Windows / Linux 上打包 → 上传安装包和更新信息（`latest.yml` 等）→ 正式发布。选「只打包不发布」时只打包，产物在这次运行的 Artifacts 里。
 
-**更新说明**也是自动生成的：开头是下载表，下面是这一版改了什么，内容取自 [`CHANGELOG.md`](CHANGELOG.md) 的「未发布」一节，发布时这一节会自动改名为这个版本号。平时改完东西往「未发布」里记一笔即可；没写的话，就用上一版以来的提交说明。
+**更新说明**也是自动生成的，中英双语：开头是下载表，下面是这一版改了什么。英文取自 [`CHANGELOG.md`](CHANGELOG.md) 的 Unreleased 一节，中文取自 [`CHANGELOG.zh-CN.md`](CHANGELOG.zh-CN.md) 的「未发布」一节，发布时这两节会自动改名为这个版本号。平时改完东西往两份里各记一笔；都没写的话，就用上一版以来的提交说明。
 
 已安装的 FloatNote（安装版、Linux AppImage）在启动 15 秒后及之后每 6 小时检查一次，有新版本就在后台下载，下载完弹出「重启更新」，不点的话下次退出时自动安装。设置面板里可以看到当前版本、手动检查更新。开发版（`pnpm start`）和便携版不会自动更新。
 
@@ -213,6 +214,7 @@ pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选
 ```
 main/main.js       主进程：数据（增量合并 + 广播）、便笺本与桌面便笺窗口、贴边收起、快速捕捉、托盘、全局快捷键
 main/preload.js    contextBridge 暴露的受限 API
+renderer/i18n.js   界面语言：英文译文表、t()、日期格式（源码里的界面文字用中文写，英文时查表；主进程也用它）
 renderer/life.js   完成奖励、撕纸动画（纯表现层）
 renderer/history.js 撤销 / 重做（按便笺的快照栈）
 renderer/paste.js  粘贴清理、纯文本粘贴、链接识别
@@ -229,7 +231,7 @@ renderer/app.js    启动流程
 renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
 scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
 scripts/release.js 本地准备发布（改版本号、提交）；bump.js 改版本号，release-notes.js 生成 Release 说明
-CHANGELOG.md       更新记录（「未发布」一节就是下一版的 Release 说明）
+CHANGELOG.md       更新记录（英文）；CHANGELOG.zh-CN.md 是中文版。两份的 Unreleased / 「未发布」一节合起来就是下一版的 Release 说明
 build/installer.nsh Windows 安装程序的补充脚本（安装 / 更新后刷新图标缓存）
 docs/images/       README 里的截图
 tests/             端到端测试（Playwright 驱动真实 Electron）

@@ -30,6 +30,7 @@ const el = {
   dockTitle: document.getElementById('dock-title'),
   nmPaper: document.getElementById('nm-paper'),
   smAppearance: document.getElementById('sm-appearance'),
+  smLanguage: document.getElementById('sm-language'),
   smDock: document.getElementById('sm-dock'),
   smCaptureHint: document.getElementById('sm-capture-hint'),
   smHotkeyTip: document.getElementById('sm-hotkey-tip'),
@@ -96,7 +97,7 @@ function noteLines(note) {
 /* 自动标题：正文第一行，无内容时为“空便笺” */
 function autoTitle(note) {
   const first = noteLines(note)[0];
-  return first ? clip(first, 18) : '空便笺';
+  return first ? clip(first, 18) : t('空便笺');
 }
 
 /* 显示标题：用户重命名过的优先，否则用自动标题 */
@@ -135,9 +136,9 @@ function noteSubtitle(note) {
   const boxes = div.querySelectorAll('input[type="checkbox"]');
   if (boxes.length) {
     const done = [...boxes].filter(b => b.hasAttribute('checked')).length;
-    parts.push(`待办 ${done}/${boxes.length}`);
+    parts.push(t('待办 {0}/{1}', done, boxes.length));
   }
-  if (div.querySelector('img')) parts.push('图片');
+  if (div.querySelector('img')) parts.push(t('图片'));
   if (note.tags && note.tags.length) parts.push('#' + note.tags[0] + (note.tags.length > 1 ? ` +${note.tags.length - 1}` : ''));
   return parts.join(' · ');
 }
@@ -145,12 +146,11 @@ function noteSubtitle(note) {
 function relativeTime(ts) {
   const diff = Date.now() - (ts || 0);
   const min = Math.floor(diff / 60000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return min + ' 分钟前';
+  if (min < 1) return t('刚刚');
+  if (min < 60) return t('{0} 分钟前', min);
   const h = Math.floor(min / 60);
-  if (h < 24) return h + ' 小时前';
-  const d = new Date(ts);
-  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  if (h < 24) return t('{0} 小时前', h);
+  return fmtDate(ts);
 }
 
 function applyGlass(v) {

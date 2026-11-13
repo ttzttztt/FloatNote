@@ -15,9 +15,9 @@ async function init() {
     state.activeId = STICKY_ID;
     if (!currentNote()) { window.api.closeSticky(STICKY_ID); return; }
     showWindowOnTop(ctx && ctx.onTop);
-    el.btnClose.title = '放回便笺本';
-    el.btnClose.setAttribute('aria-label', '放回便笺本');
-    el.switcher.title = '双击重命名（F2）';
+    el.btnClose.title = t('放回便笺本');
+    el.btnClose.setAttribute('aria-label', t('放回便笺本'));
+    el.switcher.title = t('双击重命名（F2）');
   } else {
     // 第一次打开（一张便笺都没有）：放一张欢迎便笺；之后清空了也只给空白便笺
     if (!state.notes.length) state.notes.push(state.settings.welcomed ? blankNote() : welcomeNote(hk));
@@ -58,6 +58,7 @@ async function init() {
   if (ctx && ctx.dock) onDockState(ctx.dock);
   window.api.onHotkeyChanged(showHotkeys);
   el.smVersion.textContent = 'v' + (await window.api.getAppInfo()).version;
+  showLanguage();
   if (!IS_STICKY) showDataDir();
   showUpdateState(await window.api.getUpdateState());
   window.api.onUpdateState(showUpdateState);

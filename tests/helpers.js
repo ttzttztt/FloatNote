@@ -29,7 +29,8 @@ function seedData(dir, { notes = [], settings = {} } = {}) {
 async function launchApp({ seed, dir, env = {} } = {}) {
   const userData = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'floatnote-test-'));
   if (seed) seedData(userData, seed);
-  const launchEnv = Object.assign({}, process.env, { FLOATNOTE_USER_DATA: userData }, env);
+  // 界面语言固定为中文：测试里核对的都是中文文字，不能随运行环境的系统语言变（英文界面由 i18n.test.js 单独测）
+  const launchEnv = Object.assign({}, process.env, { FLOATNOTE_USER_DATA: userData, FLOATNOTE_LANG: 'zh' }, env);
   delete launchEnv.ELECTRON_RUN_AS_NODE;
   const app = await _electron.launch({
     executablePath: require('electron'),
