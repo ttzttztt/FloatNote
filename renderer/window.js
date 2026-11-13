@@ -18,10 +18,10 @@ el.btnClose.addEventListener('click', () => {
 let stickyOnTop = true; // 桌面便笺各自记住是否置顶
 function showWindowOnTop(onTop) {
   if (IS_STICKY) stickyOnTop = !!onTop;
-  const label = IS_STICKY ? '这张桌面便笺置顶' : '窗口置顶';
+  const label = IS_STICKY ? t('这张桌面便笺置顶') : t('窗口置顶');
   el.btnPin.classList.toggle('active', !!onTop);
   el.btnPin.setAttribute('aria-pressed', String(!!onTop));
-  el.btnPin.title = onTop ? `${label}：已开启（点击取消）` : `${label}：已关闭（点击开启，保持在其他窗口上方）`;
+  el.btnPin.title = onTop ? t('{0}：已开启（点击取消）', label) : t('{0}：已关闭（点击开启，保持在其他窗口上方）', label);
   if (!IS_STICKY) el.smAlwaysOnTop.checked = !!onTop;
 }
 
@@ -80,7 +80,7 @@ el.btnNoteMenu.addEventListener('click', (e) => {
   e.stopPropagation();
   if (el.noteMenu.classList.contains('hidden')) {
     const note = currentNote();
-    el.nmPinLabel.textContent = note && note.pinned ? '取消固定' : '固定在列表最前';
+    el.nmPinLabel.textContent = note && note.pinned ? t('取消固定') : t('固定在列表最前');
   }
   toggleMenu(el.noteMenu, el.btnNoteMenu, 'left');
 });
@@ -134,7 +134,7 @@ noteMenuAction('nm-pin', (note) => {
   note.pinned = !note.pinned;
   applyDisplayOrder();
   scheduleSave(100);
-  toast(note.pinned ? '已固定在列表最前' : '已取消固定');
+  toast(note.pinned ? t('已固定在列表最前') : t('已取消固定'));
 });
 
 el.smAppearance.addEventListener('click', (e) => {
@@ -143,6 +143,19 @@ el.smAppearance.addEventListener('click', (e) => {
   state.settings.appearance = b.dataset.mode === 'manual' ? undefined : b.dataset.mode;
   applySettings();
   scheduleSave(100);
+});
+
+/* ---- 语言：自动（跟随系统）/ 中文 / English；改了以后主进程会重新加载所有窗口 ---- */
+async function showLanguage() {
+  const { setting } = await window.api.getLanguage();
+  el.smLanguage.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.lang === setting));
+}
+el.smLanguage.addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.classList.contains('active')) return;
+  e.stopPropagation();
+  persist(); // 先把没保存的改动交给主进程，窗口马上要重新加载
+  await window.api.setLanguage(b.dataset.lang);
 });
 
 el.smDock.addEventListener('change', () => {
@@ -180,8 +193,8 @@ el.btnSettings.addEventListener('click', async () => {
 async function showDataDir() {
   const { dir, isDefault } = await window.api.getDataDir();
   el.smDataDir.textContent = dir; // 显示完整路径：这就是便笺现在实际保存的地方
-  el.smDataDir.title = '点击打开这个文件夹';
-  el.smDataDirKind.textContent = isDefault ? '这台电脑的默认位置' : '自选文件夹';
+  el.smDataDir.title = t('点击打开这个文件夹');
+  el.smDataDirKind.textContent = isDefault ? t('这台电脑的默认位置') : t('自选文件夹');
   el.smDataDirReset.hidden = isDefault;
 }
 
@@ -200,28 +213,28 @@ for (const [btn, fn] of [[el.smDataDirChange, 'pickDataDir'], [el.smDataDirReset
 
 /* ============ 版本与自动更新 ============ */
 const UPDATE_LABEL = {
-  dev: ['开发版不自动更新', true],
-  portable: ['便携版请手动下载新版本', true],
-  unsupported: ['此安装方式不支持自动更新', true],
-  idle: ['检查更新', false],
-  latest: ['已是最新版本', false],
-  checking: ['正在检查…', true],
-  error: ['检查失败，点击重试', false]
+  dev: [t('开发版不自动更新'), true],
+  portable: [t('便携版请手动下载新版本'), true],
+  unsupported: [t('此安装方式不支持自动更新'), true],
+  idle: [t('检查更新'), false],
+  latest: [t('已是最新版本'), false],
+  checking: [t('正在检查…'), true],
+  error: [t('检查失败，点击重试'), false]
 };
 let readyToastShown = false;
 
 function showUpdateState(st) {
   if (!st) return;
-  let [label, disabled] = UPDATE_LABEL[st.status] || ['检查更新', false];
-  if (st.status === 'downloading') { label = `正在下载 v${st.version} · ${st.percent || 0}%`; disabled = true; }
-  if (st.status === 'ready') { label = `重启更新到 v${st.version}`; disabled = false; }
+  let [label, disabled] = UPDATE_LABEL[st.status] || [t('检查更新'), false];
+  if (st.status === 'downloading') { label = t('正在下载 v{0} · {1}%', st.version, st.percent || 0); disabled = true; }
+  if (st.status === 'ready') { label = t('重启更新到 v{0}', st.version); disabled = false; }
   el.smUpdate.textContent = label;
   el.smUpdate.disabled = disabled;
   el.smUpdate.title = st.status === 'error' ? (st.error || '') : '';
   el.smUpdate.classList.toggle('ready', st.status === 'ready');
   if (st.status === 'ready' && !readyToastShown && !IS_STICKY) {
     readyToastShown = true;
-    toastAction(`新版本 v${st.version} 已下载`, '重启更新', () => window.api.installUpdate(), 15000);
+    toastAction(t('新版本 v{0} 已下载', st.version), t('重启更新'), () => window.api.installUpdate(), 15000);
   }
 }
 
@@ -279,8 +292,8 @@ function startRecordHotkey(btn) {
   if (document.querySelector('.hotkey-btn.recording')) return;
   const which = btn.dataset.which;
   btn.classList.add('recording');
-  btn.textContent = '请按下组合键…';
-  hotkeyTip('Esc 取消 · Backspace 恢复默认');
+  btn.textContent = t('请按下组合键…');
+  hotkeyTip(t('Esc 取消 · Backspace 恢复默认'));
   window.api.suspendHotkeys(true);
 
   const finish = async (acc) => {
@@ -293,9 +306,9 @@ function startRecordHotkey(btn) {
       const r = await window.api.setHotkey(which, acc);
       if (!r.ok) {
         err = true;
-        msg = r.reason === 'duplicate' ? '和另一个快捷键重复了，换一个吧' : '这个组合被其他软件占用了，换一个吧';
+        msg = r.reason === 'duplicate' ? t('和另一个快捷键重复了，换一个吧') : t('这个组合被其他软件占用了，换一个吧');
       } else {
-        msg = acc ? '已保存' : '已恢复默认';
+        msg = acc ? t('已保存') : t('已恢复默认');
       }
     }
     await window.api.suspendHotkeys(false);
@@ -310,7 +323,7 @@ function startRecordHotkey(btn) {
     if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.metaKey) { finish(''); return; }
     const acc = accelFromEvent(e);
     if (acc === null) return;
-    if (acc === '') { hotkeyTip('至少要带 Ctrl / Alt / Win 之一', true); return; }
+    if (acc === '') { hotkeyTip(t('至少要带 Ctrl / Alt / Win 之一'), true); return; }
     finish(acc);
   };
   const onAway = (e) => { if (e.target !== btn) finish(undefined); };
@@ -384,12 +397,12 @@ document.addEventListener('pointerup', () => window.api.setPointerDown(false), t
 document.addEventListener('pointercancel', () => window.api.setPointerDown(false), true);
 
 function formatHotkey(info) {
-  if (!info || !info.acc) return '未注册';
+  if (!info || !info.acc) return t('未注册');
   const acc = String(info.acc)
     .replace('CommandOrControl', 'Ctrl')
     .replace('Control', 'Ctrl')
     .replace('Command', 'Cmd');
-  return info.ok ? acc : acc + '（注册失败，可能被占用）';
+  return info.ok ? acc : t('{0}（注册失败，可能被占用）', acc);
 }
 
 /* ============ 窗口是否激活：激活时卡片有一圈淡淡的主题色描边 ============ */
@@ -417,9 +430,7 @@ el.dockTab.addEventListener('click', () => window.api.dockExpand());
 
 /* ============ 快速捕捉：别的程序里选中文字，按快捷键追加到当前便笺 ============ */
 function formatCaptureTime(ts) {
-  const d = new Date(ts);
-  const pad = (v) => String(v).padStart(2, '0');
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return fmtDate(ts, { time: true });
 }
 
 function appendCapture(c) {
@@ -428,7 +439,7 @@ function appendCapture(c) {
   saveCurrentContent();
   Undo.before();
   const body = escapeHtml(c.text).replace(/\n/g, '<br>');
-  const src = c.source ? escapeHtml(c.source) : (c.fromClipboard ? '剪贴板' : '');
+  const src = c.source ? escapeHtml(c.source) : (c.fromClipboard ? t('剪贴板') : '');
   const meta = '— ' + (src ? src + ' · ' : '') + formatCaptureTime(c.at || Date.now());
   // 末尾若是空行就插在它前面，否则追加，并留一个空行方便继续写
   const last = el.editor.lastElementChild;
@@ -441,5 +452,5 @@ function appendCapture(c) {
   el.editor.scrollTop = el.editor.scrollHeight;
   Undo.record();
   persist();
-  if (!document.hidden) toast('已捕捉到「' + noteTitle(note) + '」');
+  if (!document.hidden) toast(t('已捕捉到「{0}」', noteTitle(note)));
 }

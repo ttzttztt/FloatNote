@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 在本地准备发布：改版本号（并把 CHANGELOG.md 的「未发布」改名为这个版本）→ 提交。
+ * 在本地准备发布：改版本号（并把两份更新记录里的 Unreleased / 「未发布」改名为这个版本）→ 提交。
  * 推送到 main 后，GitHub Actions「打包与发布」会自动打标签、测试、打包、发布，不用手动打标签。
  *
  *   pnpm release patch     1.0.3 → 1.0.4（修复）
@@ -28,7 +28,7 @@ let next;
 try { next = bump(arg); } catch (e) { fail(e.message); }
 if (git('tag', '--list', 'v' + next)) fail(`v${next} 已经发布过`);
 
-git('add', 'package.json', 'CHANGELOG.md');
+git('add', 'package.json', 'CHANGELOG.md', 'CHANGELOG.zh-CN.md');
 git('commit', '-m', `release: v${next}`);
 
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');

@@ -867,7 +867,7 @@ async function insertImage(dataUrl) {
 async function pasteClipboardImage() {
   const dataUrl = await window.api.readClipboardImage();
   if (dataUrl) await insertImage(dataUrl);
-  else toast('剪贴板中没有图片');
+  else toast(t('剪贴板中没有图片'));
 }
 
 /* ============ 事件绑定 ============ */
@@ -908,7 +908,7 @@ function openTagInput() {
   }
   const input = document.createElement('input');
   input.className = 'tag-input';
-  input.placeholder = '标签名，回车确认';
+  input.placeholder = t('标签名，回车确认');
   input.maxLength = 20;
   el.tagBar.classList.add('adding');
   el.tagBar.appendChild(input);
@@ -1070,7 +1070,7 @@ el.editor.addEventListener('change', (e) => {
     const r = cb.getBoundingClientRect();
     const boxes = [...el.editor.querySelectorAll('input[type="checkbox"]')];
     const allDone = boxes.length >= 2 && boxes.every(b => b.checked);
-    if (allDone) toast('全部完成，休息一下吧');
+    if (allDone) toast(t('全部完成，休息一下吧'));
     else window.Life.burst(r.left + r.width / 2, r.top + r.height / 2);
   } else {
     countDone(-1);

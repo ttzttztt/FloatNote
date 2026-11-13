@@ -6,7 +6,7 @@
 /* ============ 渲染 ============ */
 function renderSwitcher() {
   const note = currentNote();
-  el.noteTitleEl.textContent = note ? noteTitle(note) : '空便笺';
+  el.noteTitleEl.textContent = note ? noteTitle(note) : t('空便笺');
   el.dockTitle.textContent = note ? noteTitle(note) : '';
   el.noteTitleEl.classList.toggle('custom', !!(note && (note.title || '').trim()));
 }
@@ -43,7 +43,7 @@ function buildSwitcherMenu() {
   el.switcherMenu.innerHTML = '';
   menuSearch = document.createElement('input');
   menuSearch.className = 'menu-search';
-  menuSearch.placeholder = '搜索标题、正文、标签';
+  menuSearch.placeholder = t('搜索标题、正文、标签');
   menuList = document.createElement('div');
   menuList.className = 'menu-items';
   menuFooter = document.createElement('button');
@@ -70,7 +70,7 @@ function updateMenuFooter() {
   if (!menuFooter) return;
   const n = trashedNotes().length;
   menuFooter.hidden = !n;
-  menuFooter.innerHTML = `${TRASH_SVG}<span>最近删除</span><span class="mf-count">${n}</span>`;
+  menuFooter.innerHTML = `${TRASH_SVG}<span>${t('最近删除')}</span><span class="mf-count">${n}</span>`;
 }
 
 /* 「最近删除」视图：恢复 / 彻底删除 / 清空 */
@@ -83,10 +83,10 @@ function showTrash() {
 
   const head = document.createElement('div');
   head.className = 'trash-head';
-  head.innerHTML = '<button class="trash-back" title="返回">‹ 返回</button><span class="trash-title">最近删除</span><button class="trash-clear">清空</button>';
+  head.innerHTML = `<button class="trash-back" title="${t('返回')}">${t('‹ 返回')}</button><span class="trash-title">${t('最近删除')}</span><button class="trash-clear">${t('清空')}</button>`;
   const hint = document.createElement('div');
   hint.className = 'trash-hint';
-  hint.textContent = `删除的便笺会保留 ${TRASH_DAYS} 天，之后自动彻底删除`;
+  hint.textContent = t('删除的便笺会保留 {0} 天，之后自动彻底删除', TRASH_DAYS);
   menuList = document.createElement('div');
   menuList.className = 'menu-items';
   el.switcherMenu.append(head, hint, menuList);
@@ -102,15 +102,15 @@ function showTrash() {
   clearBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!armed) {
-      clearBtn.textContent = '确认清空？';
+      clearBtn.textContent = t('确认清空？');
       clearBtn.classList.add('danger');
-      armed = setTimeout(() => { armed = null; clearBtn.textContent = '清空'; clearBtn.classList.remove('danger'); }, 3000);
+      armed = setTimeout(() => { armed = null; clearBtn.textContent = t('清空'); clearBtn.classList.remove('danger'); }, 3000);
       return;
     }
     clearTimeout(armed);
     purgeNotes(trashedNotes().map(n => n.id));
     buildSwitcherMenu();
-    toast('「最近删除」已清空');
+    toast(t('「最近删除」已清空'));
   });
 
   list.forEach(n => {
@@ -120,14 +120,14 @@ function showTrash() {
     item.innerHTML =
       `<span class="mi-dot" data-theme="${THEMES.includes(n.color) ? n.color : 'glass'}"></span>` +
       `<span class="mi-main"><span class="mi-title">${escapeHtml(noteTitle(n))}</span>` +
-      `<span class="mi-sub">${left ? `还剩 ${left} 天` : '即将彻底删除'}</span></span>` +
-      `<button class="mi-text-btn" title="恢复这张便笺">恢复</button>` +
-      `<button class="mi-btn mi-purge" title="彻底删除（不可恢复）" aria-label="彻底删除">${TRASH_SVG}</button>`;
+      `<span class="mi-sub">${left ? t('还剩 {0} 天', left) : t('即将彻底删除')}</span></span>` +
+      `<button class="mi-text-btn" title="${t('恢复这张便笺')}">${t('恢复')}</button>` +
+      `<button class="mi-btn mi-purge" title="${t('彻底删除（不可恢复）')}" aria-label="${t('彻底删除')}">${TRASH_SVG}</button>`;
     item.querySelector('.mi-text-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       closeMenus();
       restoreNote(n.id);
-      toast('已恢复「' + noteTitle(n) + '」');
+      toast(t('已恢复「{0}」', noteTitle(n)));
     });
     item.querySelector('.mi-purge').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -145,7 +145,7 @@ function renderMenuItems() {
   menuList.innerHTML = '';
   const list = displayOrder().filter(n => noteMatches(n, q));
   if (!list.length) {
-    menuList.innerHTML = '<div class="menu-empty">没有匹配的便笺</div>';
+    menuList.innerHTML = `<div class="menu-empty">${t('没有匹配的便笺')}</div>`;
     return;
   }
   list.forEach(n => {
@@ -160,10 +160,10 @@ function renderMenuItems() {
       `<span class="mi-dot" data-theme="${THEMES.includes(n.color) ? n.color : 'glass'}"></span>` +
       `<span class="mi-main"><span class="mi-title">${escapeHtml(noteTitle(n))}</span>` +
       (sub ? `<span class="mi-sub">${escapeHtml(sub)}</span>` : '') + `</span>` +
-      (stuck ? `<span class="mi-badge" title="已贴在桌面上，点击把它叫到前面">桌面</span>` : `<span class="mi-time">${relativeTime(n.updatedAt)}</span>`) +
-      (stuck ? '' : `<button class="mi-btn mi-stick" title="贴到桌面" aria-label="贴到桌面">${STICK_SVG}</button>`) +
-      `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? '取消固定' : '固定在列表最前'}" aria-label="${n.pinned ? '取消固定' : '固定在列表最前'}">${STAR_SVG}</button>` +
-      `<button class="mi-btn mi-rename" title="重命名" aria-label="重命名">${PENCIL_SVG}</button>`;
+      (stuck ? `<span class="mi-badge" title="${t('已贴在桌面上，点击把它叫到前面')}">${t('桌面')}</span>` : `<span class="mi-time">${relativeTime(n.updatedAt)}</span>`) +
+      (stuck ? '' : `<button class="mi-btn mi-stick" title="${t('贴到桌面')}" aria-label="${t('贴到桌面')}">${STICK_SVG}</button>`) +
+      `<button class="mi-btn mi-pin${n.pinned ? ' on' : ''}" title="${n.pinned ? t('取消固定') : t('固定在列表最前')}" aria-label="${n.pinned ? t('取消固定') : t('固定在列表最前')}">${STAR_SVG}</button>` +
+      `<button class="mi-btn mi-rename" title="${t('重命名')}" aria-label="${t('重命名')}">${PENCIL_SVG}</button>`;
 
     const go = () => {
       closeMenus();
@@ -266,8 +266,8 @@ function startRename() {
   input.className = 'pill-input';
   input.maxLength = 40;
   input.value = (note.title || '').trim();
-  input.placeholder = autoTitle(note) === '空便笺' ? '输入便笺标题' : autoTitle(note);
-  input.title = '回车保存 · Esc 取消 · 留空则用第一行文字';
+  input.placeholder = autoTitle(note) === t('空便笺') ? t('输入便笺标题') : autoTitle(note);
+  input.title = t('回车保存 · Esc 取消 · 留空则用第一行文字');
   el.switcher.classList.add('renaming');
   el.switcher.after(input);
   input.focus();
@@ -301,15 +301,15 @@ function renderTags() {
     const chip = document.createElement('span');
     chip.className = 'tag';
     chip.innerHTML = `<span>#${escapeHtml(tag)}</span><span class="tag-x">×</span>`;
-    chip.title = '点击移除标签';
+    chip.title = t('点击移除标签');
     chip.addEventListener('click', () => removeTag(tag));
     el.tagBar.appendChild(chip);
   });
   // 「＋ 标签」：鼠标移到便笺上才显示；没有标签时浮在正文上方的空白里，不占行
   const add = document.createElement('button');
   add.className = 'tag tag-add';
-  add.textContent = '＋ 标签';
-  add.title = '添加标签（Ctrl + Shift + L）';
+  add.textContent = t('＋ 标签');
+  add.title = t('添加标签（Ctrl + Shift + L）');
   add.addEventListener('click', (e) => { e.stopPropagation(); openTagInput(); });
   el.tagBar.appendChild(add);
   el.tagBar.classList.toggle('no-tags', !(note.tags || []).length);

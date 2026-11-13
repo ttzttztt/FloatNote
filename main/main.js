@@ -35,6 +35,8 @@ function registerImageProtocol() {
   });
 }
 
+const i18n = require('../renderer/i18n.js');
+
 const GUTTER = 14; // 卡片四周留给投影的透明边距（与 styles.css 的 --gutter 一致）
 const INDEX_HTML = path.join(__dirname, '..', 'renderer', 'index.html');
 const ASSETS = path.join(__dirname, '..', 'assets');
@@ -75,9 +77,25 @@ setDataPaths(readLocation() || userDataDir);
 const isCustomDataDir = () => dataDir !== path.resolve(userDataDir);
 
 // 由主进程维护、渲染进程不会改写的设置项
-const MAIN_OWNED_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey'];
+const MAIN_OWNED_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey', 'language'];
 // 每台电脑各自的设置：存在本机 local.json，不随数据目录同步
-const LOCAL_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey', 'activeNoteId'];
+const LOCAL_SETTINGS = ['bounds', 'stickies', 'dock', 'hotkey', 'captureHotkey', 'activeNoteId', 'language'];
+
+/* ============ 界面语言 ============
+   设置里可选 自动 / 中文 / English（存在本机 local.json 的 language 里，不随数据目录同步）。
+   自动 = 跟随系统：中文系统用中文，其他用英文。FLOATNOTE_LANG 环境变量可强制指定（测试用）。 */
+const LANGS = ['zh', 'en'];
+function languageSetting() {
+  const v = store && store.settings && store.settings.language;
+  return LANGS.includes(v) ? v : 'auto';
+}
+function currentLang() {
+  if (LANGS.includes(process.env.FLOATNOTE_LANG)) return process.env.FLOATNOTE_LANG;
+  const v = languageSetting();
+  return v === 'auto' ? i18n.fromLocale(app.getLocale()) : v;
+}
+/* 主进程里的界面文字（托盘菜单、对话框、通知）：源码写中文，英文时查译文 */
+const T = (s, ...args) => i18n.translate(currentLang(), s, ...args);
 
 function ensureDirs() {
   if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
@@ -204,7 +222,7 @@ function listBackups() {
       .reverse()
       .map(f => {
         const [, y, m, d] = BACKUP_RE.exec(f);
-        return { file: path.join(backupDir, f), name: f, label: `${y}年${Number(m)}月${Number(d)}日` };
+        return { file: path.join(backupDir, f), name: f, label: i18n.formatDate(currentLang(), new Date(Number(y), Number(m) - 1, Number(d)), { year: true }) };
       });
   } catch (_) {
     return [];
@@ -233,17 +251,17 @@ async function restoreBackup(b) {
   try {
     backupData = normalizeData(JSON.parse(fs.readFileSync(b.file, 'utf-8')));
   } catch (e) {
-    dialog.showMessageBox({ type: 'error', message: '这份备份无法读取', detail: e.message });
+    dialog.showMessageBox({ type: 'error', message: T('这份备份无法读取'), detail: e.message });
     return;
   }
   const live = backupData.notes.filter(n => !n.trashed).length;
   const { response } = await dialog.showMessageBox({
     type: 'question',
-    buttons: ['恢复', '取消'],
+    buttons: [T('恢复'), T('取消')],
     defaultId: 1,
     cancelId: 1,
-    message: `用 ${b.label} 的备份替换现在的所有便笺？`,
-    detail: `备份里有 ${live} 张便笺。现在的数据会先另存为 backups/before-restore-*.json，选错了还能找回。`
+    message: T('用 {0} 的备份替换现在的所有便笺？', b.label),
+    detail: T('备份里有 {0} 张便笺。现在的数据会先另存为 backups/before-restore-*.json，选错了还能找回。', live)
   });
   if (response !== 0) return;
   flushStore();
@@ -258,7 +276,7 @@ async function restoreBackup(b) {
   store = backupData;
   flushStore();
   reloadAllWindows();
-  notify('已从备份恢复', `${b.label}，共 ${live} 张便笺`);
+  notify(T('已从备份恢复'), T('{0}，共 {1} 张便笺', b.label, live));
 }
 
 /* ============ 清理没有便笺在用的图片 ============
@@ -537,7 +555,7 @@ function changeDataDir(dir, mode = 'move') {
     fs.writeFileSync(probe, 'ok');
     fs.unlinkSync(probe);
   } catch (e) {
-    return { ok: false, error: '这个文件夹无法写入：' + e.message };
+    return { ok: false, error: T('这个文件夹无法写入：{0}', e.message) };
   }
   flushStore();
   const targetFile = path.join(dir, 'data.json');
@@ -549,9 +567,9 @@ function changeDataDir(dir, mode = 'move') {
     let other;
     try {
       other = JSON.parse(fs.readFileSync(targetFile, 'utf-8'));
-      if (!isOurData(other)) throw new Error('不是 FloatNote 的数据');
+      if (!isOurData(other)) throw new Error(T('不是 FloatNote 的数据'));
     } catch (e) {
-      return { ok: false, error: '那里的 data.json 无法读取：' + e.message };
+      return { ok: false, error: T('那里的 data.json 无法读取：{0}', e.message) };
     }
     other = normalizeData(other);
     if (mode === 'theirs') {
@@ -589,8 +607,8 @@ async function pickDataDir(win, toDefault) {
     dir = userDataDir;
   } else {
     const r = await dialog.showOpenDialog(win, {
-      title: '选择便笺保存位置',
-      buttonLabel: '保存到这里',
+      title: T('选择便笺保存位置'),
+      buttonLabel: T('保存到这里'),
       properties: ['openDirectory', 'createDirectory']
     });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
@@ -602,27 +620,27 @@ async function pickDataDir(win, toDefault) {
   if (fs.existsSync(targetFile)) {
     let n = 0;
     try { n = liveCount(normalizeData(JSON.parse(fs.readFileSync(targetFile, 'utf-8')))); } catch (e) {
-      await dialog.showMessageBox(win, { type: 'error', message: '那里的 data.json 无法读取', detail: e.message });
+      await dialog.showMessageBox(win, { type: 'error', message: T('那里的 data.json 无法读取'), detail: e.message });
       return { ok: false, canceled: true };
     }
     const { response } = await dialog.showMessageBox(win, {
       type: 'question',
-      buttons: ['合并两边的便笺', '只用那里的便笺', '取消'],
+      buttons: [T('合并两边的便笺'), T('只用那里的便笺'), T('取消')],
       defaultId: 0,
       cancelId: 2,
-      message: `这个文件夹里已经有 ${n} 张便笺`,
-      detail: '合并：两边的便笺都保留，同一张便笺以最后修改的为准。\n只用那里的：本机现在的便笺不带过去（仍留在原位置，随时可以切回来）。'
+      message: T('这个文件夹里已经有 {0} 张便笺', n),
+      detail: T('合并：两边的便笺都保留，同一张便笺以最后修改的为准。\n只用那里的：本机现在的便笺不带过去（仍留在原位置，随时可以切回来）。')
     });
     if (response === 2) return { ok: false, canceled: true };
     mode = response === 0 ? 'merge' : 'theirs';
   } else {
     const { response } = await dialog.showMessageBox(win, {
       type: 'question',
-      buttons: ['复制过去并使用', '取消'],
+      buttons: [T('复制过去并使用'), T('取消')],
       defaultId: 0,
       cancelId: 1,
-      message: '把便笺保存到这个文件夹？',
-      detail: `${dir}\n\n现有的便笺和图片会复制过去，之后的修改都保存在那里；原位置的文件保留不动。\n放在 OneDrive、坚果云、iCloud 等同步文件夹里，多台电脑就能共用便笺。`
+      message: T('把便笺保存到这个文件夹？'),
+      detail: T('{0}\n\n现有的便笺和图片会复制过去，之后的修改都保存在那里；原位置的文件保留不动。\n放在 OneDrive、坚果云、iCloud 等同步文件夹里，多台电脑就能共用便笺。', dir)
     });
     if (response !== 0) return { ok: false, canceled: true };
   }
@@ -1216,7 +1234,7 @@ function setAutoLaunch(on) {
         const q = (v) => '"' + String(v).replace(/(["\\`$])/g, '\\$1') + '"';
         const exec = [exe, ...loginItemOptions().args].map(q).join(' ');
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, ['[Desktop Entry]', 'Type=Application', 'Name=FloatNote', 'Comment=桌面便签', `Exec=${exec}`, 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
+        fs.writeFileSync(file, ['[Desktop Entry]', 'Type=Application', 'Name=FloatNote', 'Comment=' + T('桌面便签'), `Exec=${exec}`, 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
       } else if (fs.existsSync(file)) {
         fs.unlinkSync(file);
       }
@@ -1322,7 +1340,7 @@ async function quickCapture() {
 
     text = String(text || '').replace(/\r\n/g, '\n').trim();
     if (!text) {
-      notify('没有可捕捉的文字', '先在其他程序里选中文字，再按 ' + prettyHotkey(captureInfo.ok ? captureInfo.acc : '') + '。');
+      notify(T('没有可捕捉的文字'), T('先在其他程序里选中文字，再按 {0}。', prettyHotkey(captureInfo.ok ? captureInfo.acc : '')));
       return;
     }
     if (text.length > 5000) text = text.slice(0, 5000) + '…';
@@ -1330,7 +1348,7 @@ async function quickCapture() {
     if (mainCtx && !mainCtx.win.isDestroyed()) mainCtx.win.webContents.send('capture:add', payload);
     if (!mainCtx.win.isVisible() || mainCtx.collapsed) {
       const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
-      notify('已捕捉到便笺', preview);
+      notify(T('已捕捉到便笺'), preview);
     }
   } finally {
     capturing = false;
@@ -1385,7 +1403,7 @@ function initAutoUpdate() {
   autoUpdater.on('update-not-available', () => setUpdateState({ status: 'latest' }));
   autoUpdater.on('update-downloaded', (info) => {
     setUpdateState({ status: 'ready', version: info.version, percent: 100 });
-    notify('FloatNote 新版本已就绪', `v${info.version} 已下载，重启即可更新（不重启的话下次退出时自动安装）`);
+    notify(T('FloatNote 新版本已就绪'), T('v{0} 已下载，重启即可更新（不重启的话下次退出时自动安装）', info.version));
   });
   autoUpdater.on('error', (e) => onUpdateError(e));
   setTimeout(checkForUpdate, 15000);
@@ -1413,12 +1431,24 @@ function installUpdate() {
   return true;
 }
 
+/* 换语言：记到本机设置，托盘菜单马上换，所有窗口重新加载后用新语言显示 */
+function setLanguage(v) {
+  const next = LANGS.includes(v) ? v : 'auto';
+  if (next === languageSetting()) return currentLang();
+  if (next === 'auto') delete store.settings.language;
+  else store.settings.language = next;
+  scheduleStoreSave();
+  if (tray) { tray.setToolTip(T('FloatNote 便签')); rebuildTrayMenu(); }
+  reloadAllWindows(150); // 稍等一下再刷新，先把这次调用的结果送回页面
+  return currentLang();
+}
+
 /* ============ 托盘 ============ */
 function createTray() {
   // Windows 用 .ico：里面有 16–256 各尺寸单独渲染的图，系统按显示缩放挑最清晰的那张
   const icon = nativeImage.createFromPath(process.platform === 'win32' ? APP_ICON : path.join(ASSETS, 'icon-32.png'));
   tray = new Tray(icon);
-  tray.setToolTip('FloatNote 便签');
+  tray.setToolTip(T('FloatNote 便签'));
   rebuildTrayMenu();
   tray.on('click', () => showWindow());
   tray.on('double-click', () => showWindow());
@@ -1428,25 +1458,25 @@ function rebuildTrayMenu() {
   if (!tray) return;
   const backups = listBackups();
   const menu = Menu.buildFromTemplate([
-    { label: hotkeyInfo.ok ? '快捷键 ' + prettyHotkey(hotkeyInfo.acc) : '快捷键注册失败', enabled: false },
-    { label: captureInfo.ok ? '快速捕捉 ' + prettyHotkey(captureInfo.acc) : '快速捕捉快捷键注册失败', enabled: false },
+    { label: hotkeyInfo.ok ? T('快捷键 {0}', prettyHotkey(hotkeyInfo.acc)) : T('快捷键注册失败'), enabled: false },
+    { label: captureInfo.ok ? T('快速捕捉 {0}', prettyHotkey(captureInfo.acc)) : T('快速捕捉快捷键注册失败'), enabled: false },
     { type: 'separator' },
-    { label: '显示 / 隐藏便签', click: () => toggleWindow() },
-    { label: '新建便签', click: () => { showWindow(); mainCtx.win.webContents.send('cmd:new-note'); } },
-    { label: '找回窗口（移到屏幕中央）', click: () => recenterWindow() },
+    { label: T('显示 / 隐藏便签'), click: () => toggleWindow() },
+    { label: T('新建便签'), click: () => { showWindow(); mainCtx.win.webContents.send('cmd:new-note'); } },
+    { label: T('找回窗口（移到屏幕中央）'), click: () => recenterWindow() },
     ...(updateState.status === 'ready'
-      ? [{ type: 'separator' }, { label: `重启并更新到 v${updateState.version}`, click: () => installUpdate() }]
+      ? [{ type: 'separator' }, { label: T('重启并更新到 v{0}', updateState.version), click: () => installUpdate() }]
       : []),
     { type: 'separator' },
     {
-      label: '从备份恢复',
+      label: T('从备份恢复'),
       submenu: backups.length
         ? backups.map(b => ({ label: b.label, click: () => restoreBackup(b) }))
-        : [{ label: '还没有备份（每天首次启动时自动备份）', enabled: false }]
+        : [{ label: T('还没有备份（每天首次启动时自动备份）'), enabled: false }]
     },
-    { label: '打开数据文件夹', click: () => shell.openPath(dataDir) },
+    { label: T('打开数据文件夹'), click: () => shell.openPath(dataDir) },
     { type: 'separator' },
-    { label: '退出 FloatNote', click: () => { isQuitting = true; app.quit(); } }
+    { label: T('退出 FloatNote'), click: () => { isQuitting = true; app.quit(); } }
   ]);
   tray.setContextMenu(menu);
 }
@@ -1538,7 +1568,7 @@ function registerIpc() {
     // 首次隐藏时提示如何唤回，避免用户以为窗口“消失”了
     if (!hideHintShown && tray) {
       hideHintShown = true;
-      notify('FloatNote 已隐藏', '按 ' + (hotkeyInfo.ok ? prettyHotkey(hotkeyInfo.acc) : '全局快捷键') + ' 或点击托盘图标即可唤回');
+      notify(T('FloatNote 已隐藏'), T('按 {0} 或点击托盘图标即可唤回', hotkeyInfo.ok ? prettyHotkey(hotkeyInfo.acc) : T('全局快捷键')));
     }
   });
   ipcMain.handle('win:minimize', (e) => { const c = ctxOf(e); if (c) c.win.minimize(); });
@@ -1599,6 +1629,10 @@ function registerIpc() {
   ipcMain.handle('hotkey:suspend', (e, on) => suspendHotkeys(!!on));
   ipcMain.handle('app:getAutoLaunch', () => getAutoLaunch());
   ipcMain.handle('app:info', () => ({ version: app.getVersion() }));
+  // 页面脚本一加载就要知道用哪种语言，所以这一个是同步的
+  ipcMain.on('app:lang', (e) => { e.returnValue = currentLang(); });
+  ipcMain.handle('app:getLanguage', () => ({ setting: languageSetting(), lang: currentLang() }));
+  ipcMain.handle('app:setLanguage', (e, v) => setLanguage(v));
   ipcMain.handle('data:getDir', () => ({ dir: dataDir, isDefault: !isCustomDataDir() }));
   ipcMain.handle('data:pickDir', (e) => pickDataDir(BrowserWindow.fromWebContents(e.sender), false));
   ipcMain.handle('data:resetDir', (e) => pickDataDir(BrowserWindow.fromWebContents(e.sender), true));
@@ -1654,7 +1688,7 @@ if (!gotLock) {
     startDataWatch();
     if (isCustomDataDir()) mergeConflictCopies();
     setTimeout(cleanupImages, Number(process.env.FLOATNOTE_CLEANUP_DELAY) || 15000);
-    if (recoveredFrom) notify('数据文件损坏，已自动恢复', `已从 ${recoveredFrom} 的备份恢复。损坏的文件已改名保留在数据文件夹中。`);
+    if (recoveredFrom) notify(T('数据文件损坏，已自动恢复'), T('已从 {0} 的备份恢复。损坏的文件已改名保留在数据文件夹中。', recoveredFrom));
   });
 
   // 退出前兜底保存窗口位置与数据

@@ -436,7 +436,7 @@ body.mode-sticky .tag-bar.no-tags .tag-add { left: 16px; top: -4px; }
   pointer-events: none;
 }
 /* 点进空便笺后：提示变成“开始输入…”并更淡，光标用主题色，一眼看出已经可以打字 */
-.editor:focus:empty::before { content: '开始输入…'; opacity: .55; }
+.editor:focus:empty::before { content: attr(data-placeholder-focus); opacity: .55; }
 .editor { caret-color: var(--accent); }
 .editor ::selection, .menu ::selection, .pill-input::selection, .tag-input::selection {
   background: color-mix(in srgb, var(--accent) 26%, transparent);
@@ -1135,6 +1135,9 @@ body.ctrl-held .editor a { cursor: pointer; text-decoration-color: currentColor;
   transition: border-color .14s, box-shadow .14s;
 }
 .hotkey-btn:hover { border-color: var(--accent); }
+/* 英文文字更长：按钮放宽、不折行 */
+body.lang-en .hotkey-btn { max-width: 210px; white-space: nowrap; }
+body.lang-en .pm-hint { max-width: 200px; }
 .hotkey-btn.recording { border-color: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 3px var(--accent-soft); }
 .pm-hotkey-tip { font-size: 11px; color: var(--muted); text-align: right; margin: -2px 0 4px; }
 .pm-hotkey-tip.error { color: var(--danger); }

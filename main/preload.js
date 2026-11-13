@@ -5,6 +5,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 const on = (channel) => (cb) => ipcRenderer.on(channel, (e, payload) => cb(payload));
 
 contextBridge.exposeInMainWorld('api', {
+  // 界面语言：页面脚本一开始就要用，所以同步取（'zh' 或 'en'）
+  lang: ipcRenderer.sendSync('app:lang'),
+  getLanguage: () => ipcRenderer.invoke('app:getLanguage'),
+  setLanguage: (v) => ipcRenderer.invoke('app:setLanguage', v),
   // 数据：主进程持有唯一一份；渲染进程只发送增量，并接收其他窗口的增量
   loadData: () => ipcRenderer.invoke('data:load'),
   patchData: (patch) => ipcRenderer.invoke('data:patch', patch),

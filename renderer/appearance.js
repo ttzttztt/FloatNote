@@ -65,10 +65,10 @@ function updateStatus() {
     el.statusBar.textContent = '';
     return;
   }
-  const rel = relativeTime(note.updatedAt);
+  const justNow = Date.now() - (note.updatedAt || 0) < 60000;
   const done = todayDone();
-  el.statusBar.textContent = (done && !IS_STICKY ? `今日完成 ${done} 件 · ` : '') +
-    `${chars} 字 · ` + (rel === '刚刚' ? '刚刚编辑' : '编辑于 ' + rel);
+  el.statusBar.textContent = (done && !IS_STICKY ? t('今日完成 {0} 件 · ', done) : '') +
+    t('{0} 字 · ', chars) + (justNow ? t('刚刚编辑') : t('编辑于 {0}', relativeTime(note.updatedAt)));
 }
 
 /* ============ 今日完成数 ============ */

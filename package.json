@@ -60,9 +60,9 @@
       "createStartMenuShortcut": true,
       "shortcutName": "FloatNote",
       "installerLanguages": [
+        "en_US",
         "zh_CN"
       ],
-      "language": "2052",
       "deleteAppDataOnUninstall": false,
       "artifactName": "FloatNote-Setup-${version}.${ext}"
     },

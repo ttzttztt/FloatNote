@@ -23,7 +23,7 @@
     const a = document.createElement('a');
     a.href = href;
     a.textContent = text;
-    a.title = 'Ctrl + 单击打开';
+    a.title = t('Ctrl + 单击打开');
     return a;
   }
 
