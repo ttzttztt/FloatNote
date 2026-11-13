@@ -1,227 +1,218 @@
-# FloatNote
+<p align="center">
+  <img src="assets/icon-128.png" width="96" height="96" alt="FloatNote icon">
+</p>
 
-一张浮在桌面上的半透明便笺：随手记、随时唤起、不打扰。全局快捷键唤起，待办、图片、标签混排，自动保存，支持多台电脑共用。
+<h1 align="center">FloatNote</h1>
 
-![FloatNote：便笺本和贴在桌面上的两张小便笺](docs/images/overview.jpg)
+<p align="center">
+  A translucent sticky note that floats on your desktop.<br>
+  Jot things down, summon it with a hotkey, tuck it against the screen edge when you're done.
+</p>
 
-## 下载安装
+<p align="center">
+  <a href="https://github.com/ttzttztt/FloatNote/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ttzttztt/FloatNote"></a>
+  <a href="https://github.com/ttzttztt/FloatNote/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/ttzttztt/FloatNote/total"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
 
-到 [Releases](https://github.com/ttzttztt/FloatNote/releases/latest) 下载最新版本：
+<p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
 
-| 系统 | 文件 | 说明 |
+![FloatNote: the notebook window and two notes stuck to the desktop](docs/images/overview.jpg)
+
+> The interface is currently in Simplified Chinese, as shown in the screenshots.
+
+## Highlights
+
+- **One keystroke away.** `Ctrl+Alt+Space` shows or hides FloatNote from any app. It lives in the tray, not the taskbar.
+- **To-dos, lists, images and links in one note.** Type `[] `, `- ` or `# ` at the start of a line and it turns into a to-do, a list or a heading.
+- **Stick notes to the desktop.** Tear any note out of the notebook and it becomes its own small window that remembers where you put it.
+- **Edge docking.** Drag a note to the edge of the screen and it folds into a thin tab. Touch the tab and it slides back out.
+- **Quick capture.** Select text in any app, press `Ctrl+Alt+C`, and it lands in the current note with its source and time.
+- **Six colors, five papers.** Glass, yellow, mint, pink, kraft or dark; plain, ruled, grid, dotted or dog-eared. Each note has its own.
+- **Local-first.** Notes stay on your computer. Daily backups, a 30-day trash, and optional sync through any cloud folder you already use.
+- **Updates itself.** The installed version downloads new releases in the background.
+
+## Download
+
+Get the latest build from [Releases](https://github.com/ttzttztt/FloatNote/releases/latest):
+
+| System | File | Notes |
 | --- | --- | --- |
-| Windows（推荐） | `FloatNote-Setup-x.y.z.exe` | 安装版，有新版本时自动更新 |
-| Windows 免安装 | `FloatNote-x.y.z-portable.exe` | 双击即用，不自动更新 |
-| Linux | `FloatNote-x.y.z-x86_64.AppImage` | 加上可执行权限后直接运行 |
+| Windows (recommended) | `FloatNote-Setup-x.y.z.exe` | Installer. Updates automatically. |
+| Windows, portable | `FloatNote-x.y.z-portable.exe` | Runs without installing. No automatic updates. |
+| Linux | `FloatNote-x.y.z-x86_64.AppImage` | Make it executable, then run it. |
 
-第一次打开会有一张「欢迎使用 FloatNote」便笺，跟着里面的几条待办走一遍就会用了。
+The installer is not code-signed, so Windows may show "Windows protected your PC" on first run. Click **More info**, then **Run anyway**.
 
-## 常见问题
+On first launch you get a welcome note with a short checklist that walks you through the main features.
 
-- **Windows 提示「Windows 已保护你的电脑」**：安装包没有付费的代码签名，点「更多信息」→「仍要运行」即可。
-- **更新后桌面图标还是旧的**：这是 Windows 的图标缓存没有刷新。从 v1.0.3 起安装程序会自动刷新；更早的版本可以按 `Win + R` 运行 `ie4uinit.exe -show`，或删掉桌面快捷方式后从开始菜单重新发送到桌面。
-- **窗口找不到了**：按唤起快捷键（默认 `Ctrl+Alt+Space`）或单击托盘图标；托盘菜单里还有「找回窗口（移到屏幕中央）」。
-- **便笺存在哪里**：只存在你自己的电脑上，不经过任何服务器，见下方「数据位置与多设备同步」。
+macOS builds are not published or tested. The project can be built from source there (`pnpm dist:mac`), but expect rough edges.
 
-## 功能
+## Features
 
-- **外观**：白色磨砂玻璃便笺——半透明玻璃 + 内阴影高光 + 细颗粒噪声，圆角成一套同心的尺度（卡片 18px、浮层 14px、控件 8px，桌面小便笺 16px），柔和外阴影，激活的那张边框带一点主题色、阴影更实；工具栏为圆形主操作按钮（新建 / 隐藏 / 关闭）+ 胶囊便笺切换器 + 分组分隔线，图标统一 16px 线性风格；默认窗口为横向 700×380，可自由缩放。
-- **第一次打开**：有一张「欢迎使用 FloatNote」便笺，用几条待办带你走一遍唤起快捷键、待办、换颜色、贴边、快速捕捉、贴到桌面；删掉后不会再出现。
-- **系统集成**：设置里可开启「开机自动启动」；唤起 / 快速捕捉的全局快捷键可点击录制修改（与另一个重复或被占用时会提示并保留原设置，Backspace 恢复默认）。
-- **唤起与窗口**：全局快捷键（默认 `Ctrl+Alt+Space`）一次唤起后台、隐藏或收起的便笺本，便笺本已在前台时再次按下则隐藏；单击托盘图标唤起，托盘菜单「显示 / 隐藏便签」切换显隐；点击工具栏空白区拖动窗口；四条边和四个角都能拖动调整大小；「窗口置顶」开关（工具栏图钉，让窗口总在其他窗口上方）；`—` 与 `✕` 均为隐藏到托盘，退出走托盘菜单。
-- **配色主题**：白玻璃、暖黄便利贴、薄荷绿、樱花粉、牛皮纸、深色六种，每张便笺单独设置（工具栏「⋯」→ 颜色），切换菜单里以色点区分。
-- **保持在浏览器上方**：开启工具栏图钉的「窗口置顶」，切换到浏览器后便笺仍留在上方；图钉提示会显示「已开启 / 已关闭」。便笺本与每张桌面便笺分别记住置顶选择，重启后恢复；贴边期间的临时置顶不会改动这个选择。关闭置顶后，切换到其他程序时便笺可能被覆盖。
+### Writing
 
-![工具栏「⋯」里是这张便笺自己的设置](docs/images/note-menu.jpg)
+- **Markdown-style shortcuts** at the start of a line: `[] ` makes a to-do, `[x] ` a checked one, `- ` a bullet list, `1. ` a numbered list, `# ` and `## ` headings.
+- **To-dos**: the toolbar button or `Ctrl+Shift+T` converts the current line or every selected line, and converts it back. Enter continues the list; Enter on an empty to-do leaves it. Checking an item off sets off a small burst of dots.
+- **Images**: paste with `Ctrl+V`. Anything longer than 1920 px on its long side is scaled down and stored as WebP, so a 4K screenshot shrinks from about 8 MB to about 0.5 MB. GIFs are kept as they are.
+- **Clean paste**: content from web pages and Word keeps its structure (paragraphs, headings, lists, bold, links) and drops fonts, colors and backgrounds. `Ctrl+Shift+V` pastes plain text.
+- **Links**: URLs become links as you type. `Ctrl`+click opens them in your browser.
+- **Undo and redo** cover everything, including to-do toggles, indentation, pastes and captures. Each note has its own history.
+- **Tags**: hover a note and click **＋ 标签** (add tag), or press `Ctrl+Shift+L`.
 
-- **两个菜单**：工具栏「⋯」是这张便笺自己的设置（颜色、纸张、重命名、添加标签、固定在列表最前、贴到桌面）；右上角「设置」只放对所有便笺都生效的选项（外观、字号、透明度、窗口置顶、快捷键、便笺保存在哪里等），全部快捷键收在最下面的「全部快捷键」里。
-- **界面细节**：鼠标移开卡片时工具栏淡出，只留内容（可在设置中关闭）；右下角状态栏显示「字数 · 编辑于 N 分钟前」；新建 / 切换便笺时内容轻微淡入；设置里可调字号（12–22px）。
+### Notes on your desktop
 
-![六种颜色，搭配素纸、横线、方格、点阵、折角](docs/images/themes.jpg)
+![Edge docking: a thin tab at the screen edge (left) slides out when the pointer touches it (right)](docs/images/dock.jpg)
 
-- **纸与生命**：
-  - 完成奖励：勾选待办时迸出几颗小圆点；一张便笺的待办全部完成时提示「全部完成，休息一下吧」；状态栏显示「今日完成 N 件」。
-  - 纸张：素纸 / 横线 / 方格 / 点阵 / 折角（右下角真的折起来，露出桌面），另有牛皮纸颜色；每张便笺单独设置（「⋯」→ 纸张）。
-  - 外观跟随：手动 / 跟随系统深色模式 / 跟随时间（早上 6–10 点偏暖，晚上 10 点到早上 6 点自动变暗）。
-  - 撕掉与贴回：删除时便笺像便利贴一样被撕下来飞走，撤销时带回弹贴回来。
+- **Stick to desktop**: from the note's **⋯** menu, or by dragging a note out of the switcher list. Each desktop note remembers its position, size and pin state across restarts. All windows edit the same data and stay in sync.
+- **Edge docking**: drag the notebook or a desktop note to the left, right or top edge. It collapses into a tab when the pointer leaves and expands when the pointer returns. Docked tabs stay above other windows and never overlap each other.
+- **Always on top**: the pin button keeps a window above everything else, including your browser. The notebook and each desktop note remember their own setting.
+- **Quick capture**: on Windows the selected text is copied for you and your clipboard is restored afterwards. On other systems, copy first, then press the hotkey.
+- **Resize from any edge or corner**; drag the toolbar to move.
 
-![贴边收起：平时只露出一条细边（左），鼠标碰到就滑出来（右）](docs/images/dock.jpg)
+### Look and feel
 
-- **桌面上的便笺**：
-  - 贴到桌面：点「⋯」→「贴到桌面」、切换菜单里每条的同名按钮，或把菜单里的便笺直接拖出窗口，它就变成桌面上一张独立的小便笺（位置、大小、是否置顶各自记住，重启后恢复）。多个窗口编辑同一份数据，实时同步；点小便笺的 ✕ 放回便笺本。
-  - 贴边收起：把便笺本或桌面便笺拖到屏幕左 / 右 / 上边缘，鼠标移开后收成一条细边，鼠标碰到细边就滑出来；拖离边缘即取消（设置里可关闭）。贴边期间始终在最上层，不会被浏览器等窗口盖住；同一条边上的多条细边自动错开；重启后保持收起状态。
-  - 快速捕捉：在任意程序里选中文字，按 `Ctrl+Alt+C`，文字连同来源窗口标题和时间追加到当前便笺。Windows 下会自动复制选中内容，并在捕捉后还原剪贴板；其他系统请先 `Ctrl+C` 再按快捷键。
-- **便笺管理**：新建（`Ctrl+N`）、切换、搜索（`Ctrl+F`）、重命名、固定在列表最前、拖动排序、删除。删除的便笺进入「最近删除」（切换菜单底部），保留 30 天，可恢复或彻底删除；删除后底部提示条里也可直接撤销（提示条显示在状态栏的位置，不挡正文）。
-  - 切换菜单顶部有搜索框（`Ctrl+F` 直接打开并定位到这里），按标题、正文、标签过滤；回车打开第一条，方向键在结果间移动。
-  - 每条右侧的星标可把该便笺「固定在列表最前」，固定的始终排在前面；无搜索词时可拖动条目调整顺序（拖到固定区即自动固定）。（为避免混淆，「置顶」只指窗口总在其他窗口上方。）
-  - 标题：默认取正文第一行；双击标题、按 `F2` 或点菜单里的笔形按钮可自定义，留空恢复自动标题。
-  - 切换菜单：每项显示颜色、标题、正文预览、待办进度、标签与更新时间。
-  - 空便笺自动清理：切走或重启时移除没有任何内容的便笺；当前便笺为空时点「新建」直接复用。
-- **内容编辑**：文字自由编辑；Markdown 式快捷输入——行首输入 `[] `（或 `【】 `）变待办、`[x] ` 变已完成待办、`- ` 变列表、`1. ` 变编号列表、`# ` / `## ` 变标题；工具栏「待办」按钮或 `Ctrl+Shift+T` 把光标所在行或选中的多行转为待办，再按一次还原为普通文字；待办行内回车自动续一条新待办，空待办上回车退出（圆角主题色复选框，勾选后自动加删除线并保存）；在待办或列表的开头按一次 `Backspace` 就去掉复选框 / 圆点，文字留在原行；鼠标移到便笺上时标签栏出现「＋ 标签」，也可按 `Ctrl+Shift+L` 或「⋯」→「添加标签」，点击标签移除。
-- **图片**：Ctrl+V 直接粘贴图片，或 `Ctrl+Shift+I` 读取剪贴板图片；长边超过 1920 像素的自动等比缩小并转成 WebP（一张 4K 截图约从 8MB 降到 0.5MB），GIF 原样保存；图片按便笺分目录落盘，重启后正常显示。
-- **编辑体验**：
-  - 撤销 / 重做（`Ctrl+Z` / `Ctrl+Y`）覆盖所有操作，包括待办切换、缩进、Markdown 快捷输入、粘贴、快速捕捉、插入图片；每张便笺各自记录（重启后清空）。
-  - 粘贴网页 / Word 内容时只保留结构（段落、标题、列表、加粗斜体、链接），去掉字体、颜色、字号、背景等样式；`Ctrl+Shift+V` 只粘贴纯文本。
-  - 链接：网址后敲空格或回车自动变成链接，粘贴的网址同样识别；按住 `Ctrl` 单击用系统浏览器打开（只放行 http / https / mailto）。
-- **数据安全**：每天首次启动自动备份到 `backups/`，保留最近 7 天，托盘菜单「从备份恢复」可一键还原（还原前会把当前数据另存一份）；数据文件损坏时自动从最近的备份恢复，并把损坏文件改名留档；启动后自动清理没有便笺在用的图片。
-- **持久化**：内容、标签、待办勾选状态、透明度、窗口置顶、窗口位置与大小、当前便笺均自动保存。
+![Six colors with plain, ruled, grid, dotted and dog-eared paper](docs/images/themes.jpg)
 
-## 快捷键
+- **Colors and paper are per note**, set from the note's **⋯** menu. On ruled, grid and dotted paper, text sits on the lines.
+- **Appearance** can follow the system dark mode or the time of day (warmer in the morning, dark at night).
+- **Quiet by default**: the toolbar fades out when the pointer leaves the note, so only your text remains. This can be turned off.
+- **Adjustable** font size (12–22 px) and background opacity.
+- Bundled font: [LXGW WenKai Screen](https://github.com/lxgw/LxgwWenKai-Screen), a handwriting-style typeface that suits a paper note.
 
-| 操作 | 快捷键 |
+![The note menu holds settings for this note only](docs/images/note-menu.jpg)
+
+### Organizing
+
+- **Switcher** (`Ctrl+F`): search titles, text and tags. Each entry shows its color, a preview, to-do progress and when it was last edited.
+- **Favorites and order**: star a note to keep it at the top of the list; drag entries to reorder.
+- **Titles** default to the first line of the note. Double-click the title or press `F2` to set your own.
+- **Trash**: deleted notes are kept for 30 days and can be restored or removed for good. Deleting also shows an Undo prompt.
+- Empty notes are cleaned up automatically.
+
+### Safety net
+
+- **Automatic saving** of everything: text, tags, check state, window position and size.
+- **Daily backups**, kept for 7 days. **Restore from backup** in the tray menu brings one back, after saving a copy of the current data.
+- If the data file is ever corrupted, FloatNote restores the latest backup on its own and keeps the damaged file for inspection.
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
 | --- | --- |
-| 显示 / 隐藏便笺 | `Ctrl+Alt+Space`（被占用时回退 `Ctrl+Shift+Space`、`Ctrl+Alt+F9`） |
-| 新建便笺 | `Ctrl+N` |
-| 搜索 / 切换便笺 | `Ctrl+F` |
-| 重命名便笺 | 双击标题 / `F2` |
-| 快速捕捉选中文字 | `Ctrl+Alt+C`（被占用时回退 `Ctrl+Shift+Alt+C`、`Ctrl+Alt+F10`） |
-| 撤销 / 重做 | `Ctrl+Z` / `Ctrl+Y`（或 `Ctrl+Shift+Z`） |
-| 粘贴纯文本 | `Ctrl+Shift+V` |
-| 打开链接 | `Ctrl` + 单击 |
-| 缩进 / 取消缩进 | `Tab` / `Shift+Tab`（缩进行开头按 `Backspace` 也会取消一级缩进） |
-| 转为待办 / 还原 | `Ctrl+Shift+T` |
-| 圆点列表 / 编号列表 | `Ctrl+Shift+8` / `Ctrl+Shift+7`，或行首输入 `- ` / `1. `（中文标点 `－`、`1。` 也可以）；列表开头按 `Backspace` 去掉圆点 |
-| 添加标签 | `Ctrl+Shift+L` |
-| 粘贴剪贴板图片 | `Ctrl+V` / `Ctrl+Shift+I` |
+| Show or hide FloatNote | `Ctrl+Alt+Space` |
+| Quick capture selected text | `Ctrl+Alt+C` |
+| New note | `Ctrl+N` |
+| Search and switch notes | `Ctrl+F` |
+| Rename note | `F2` or double-click the title |
+| To-do on or off | `Ctrl+Shift+T` |
+| Bullet list / numbered list | `Ctrl+Shift+8` / `Ctrl+Shift+7` |
+| Indent / outdent | `Tab` / `Shift+Tab` |
+| Add tag | `Ctrl+Shift+L` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
+| Paste as plain text | `Ctrl+Shift+V` |
+| Open link | `Ctrl`+click |
 
-找不到窗口时的三种唤回方式：按全局快捷键、单击托盘图标、再次运行程序（单实例会把已有窗口唤到前台）；托盘菜单还有「找回窗口（移到屏幕中央）」，用于显示器变化导致窗口落在屏幕外的场景。
+The two global hotkeys can be changed in Settings. If a default is already taken by another program on first launch, FloatNote falls back to `Ctrl+Shift+Space` or `Ctrl+Alt+F9` for show/hide, and `Ctrl+Shift+Alt+C` or `Ctrl+Alt+F10` for capture.
 
-## 数据位置与多设备同步
+## Where your notes live
 
-应用完全在本机运行，不需要任何服务器。数据分两处保存：
+FloatNote runs entirely on your computer. There is no server and no account.
 
-| 内容 | 位置 | 是否随同步文件夹走 |
+| What | Where | Follows a sync folder |
 | --- | --- | --- |
-| 便笺 `data.json`、图片 `images/` | **数据目录**，默认在本机目录；设置 →「便笺保存在」显示的就是它的完整路径，可以在那里换位置 | 是 |
-| 本机设置 `local.json`（窗口位置、桌面便笺摆放、贴边状态、快捷键）、每日备份 `backups/`、数据位置记录 `location.json` | **本机目录** | 否，每台电脑各自一份 |
+| Notes (`data.json`) and images (`images/`) | The **data folder**. Settings shows its full path and lets you move it. | Yes |
+| Per-computer settings (window positions, desktop notes, hotkeys), daily backups | The **local folder** | No |
 
-本机目录（默认也是数据目录）：
+The local folder, which is also the default data folder:
 
-| 系统 | 路径 |
+| System | Path |
 | --- | --- |
-| Windows | `%APPDATA%\floatnote\`（通常为 `C:\Users\<用户名>\AppData\Roaming\floatnote\`） |
+| Windows | `%APPDATA%\floatnote\` |
 | macOS | `~/Library/Application Support/floatnote/` |
 | Linux | `~/.config/floatnote/` |
 
-**多台电脑共用便笺**：在每台电脑的设置 →「便笺保存在」→「换到同步文件夹…」里，选同一个 OneDrive / 坚果云 / iCloud 等同步文件夹（建议单独建一个，如 `OneDrive/FloatNote`）。
+### Sync across computers
 
-- 第一台电脑：选一个空文件夹，现有便笺和图片会复制过去，原位置保留不动。
-- 第二台电脑：选同一个文件夹时会提示「合并两边的便笺」或「只用那里的便笺」。
-- 之后每 2 秒检查一次，另一台电脑的修改会自动合并进来：同一张便笺两边都改过时取最后修改的；删除会记录下来，不会被另一台电脑带回来；同步软件产生的冲突副本（如 `data (1).json`）也会自动合并并改名为 `.merged`。
-- 图片地址与目录位置无关（`fnimg://<便笺>/<文件>`），换目录、换电脑都能显示；旧版本保存的图片地址启动时自动转换。
-- 设置里的「改回默认」可以搬回本机目录（会询问是否合并）。
+Point the data folder on each computer at the same folder inside OneDrive, Dropbox, iCloud Drive or any other sync service.
 
-备份或迁移时复制整个数据目录即可。
+- **First computer**: pick an empty folder. Your notes and images are copied there; the originals are left in place.
+- **Second computer**: pick the same folder. FloatNote asks whether to merge both sets of notes or use only the ones already there.
+- Changes from the other computer are picked up within a couple of seconds and merged note by note. If the same note was edited on both sides, the most recent edit wins. Deletions are remembered, so a deleted note does not come back.
+- Conflict copies created by the sync service, such as `data (1).json`, are merged automatically.
 
-## 开发
+To back up or migrate, copy the whole data folder.
 
-下面是给想自己改代码、打包的人看的。
+## FAQ
 
-### 技术栈
+- **I can't find the window.** Press the show/hide hotkey or click the tray icon. The tray menu also has an item that moves the window back to the center of the screen.
+- **The desktop icon still shows the old picture after an update.** That is the Windows icon cache. Installers from v1.0.3 on refresh it after installing. If the old icon is still there, press `Win+R` and run `ie4uinit.exe -show`, or restart the computer.
+- **Downloads or updates are slow.** Update packages come from GitHub. A failed update is retried after 6 hours, or you can retry from Settings or download the installer manually.
 
-| 项 | 选择 | 理由 |
+## Development
+
+### Stack
+
+| Part | Choice | Why |
 | --- | --- | --- |
-| 运行时 | Electron 45 | 原生支持全局快捷键、窗口置顶、透明窗口、剪贴板与无边框拖拽，与本地 Node 工具链一致 |
-| 渲染 | 原生 HTML/CSS/JS（无框架） | 体积小、启动快，便于长期维护 |
-| 字体 | 霞鹜文楷 屏幕阅读版（随应用打包） | 楷书手写感贴合便笺气质；SIL OFL 开源可商用；按 unicode-range 分片按需加载 |
-| 存储 | JSON + 本地图片目录（userData） | 零依赖、可读、便于备份 |
-| 窗口 | `transparent` + `frame:false` | 半透明圆角便笺外观 |
+| Runtime | Electron 45 | Global hotkeys, always-on-top, transparent frameless windows and clipboard access out of the box |
+| UI | Plain HTML, CSS and JavaScript, no framework | Small, starts fast, easy to maintain |
+| Storage | A JSON file plus an image folder | No dependencies, human-readable, easy to back up |
+| Tests | Playwright driving the real Electron app | End-to-end coverage of what users actually do |
 
-备选 Tauri 需 Rust 工具链；WPF/WinForms 做透明窗口与富文本混排成本更高，故选择 Electron。
-
-### 运行
+### Run
 
 ```bash
-pnpm install         # 首次
-pnpm start           # 或 pnpm dev；首次启动会下载 Electron 程序（约 100MB）
+pnpm install
+pnpm start
 ```
 
-`scripts/start.js` 会清除 `ELECTRON_RUN_AS_NODE` 环境变量后再启动 Electron，避免终端环境把 Electron 当作纯 Node 运行。
+The first `pnpm start` downloads the Electron binary (about 100 MB). The repository's `.npmrc` points Electron downloads at the npmmirror mirror, which is faster in mainland China. Set `ELECTRON_MIRROR` to use a different source.
 
-项目使用 pnpm（`package.json` 中 `packageManager` 已锁定版本，启用 Corepack 后会自动使用对应版本）。
-
-**Electron 下载源**：Electron 45 起不在 `install` 时下载程序，而是首次 `require('electron')`（即首次 `pnpm start`）时下载。默认源 GitHub 在国内常连不上（报 `fetch failed`），项目 `.npmrc` 已改用 npmmirror 镜像，`scripts/start.js` 启动时会读取它。想用其他源时，设置环境变量 `ELECTRON_MIRROR`（以及对应的 `ELECTRON_CUSTOM_DIR`）即可覆盖；若某次下载中断导致程序损坏，删除 `node_modules` 后重新 `pnpm install` 再启动。
-
-`pnpm start -- <参数>` 会把参数透传给 Electron（如 Linux root 环境下的 `--no-sandbox`）。
-
-### 测试
+### Test
 
 ```bash
-pnpm test            # Windows / macOS 直接运行
+pnpm test
 ```
+
+On Linux without a display:
 
 ```bash
-xvfb-run -a pnpm test   # Linux 无图形界面时
+xvfb-run -a pnpm test
 ```
 
-`tests/` 下是端到端测试：用 Playwright 驱动真实的 Electron 应用，每个测试文件使用独立的临时数据目录（`FLOATNOTE_USER_DATA`），不会碰到真实便笺。快速捕捉、真实按键唤起这类需要模拟系统按键的用例只在 Linux + xdotool 下运行，其他环境自动跳过。
+Each test file launches its own app instance with a temporary data folder, so your real notes are never touched. The suite also runs on every push and pull request.
 
-每次推送和 PR 都会在 GitHub Actions 上自动跑一遍（`.github/workflows/test.yml`）。
-
-### 打包
+### Package
 
 ```bash
-pnpm dist            # 打当前系统的安装包，输出到 release/
+pnpm dist
 ```
 
-```bash
-pnpm dist:win        # Windows：安装程序 FloatNote-Setup-x.y.z.exe（可选安装目录）+ 免安装便携版 FloatNote-x.y.z-portable.exe
-```
+This builds installers for the current system into `release/`. Use `pnpm dist:win` for the Windows installer and portable build.
 
-- 打包时同样读取 `.npmrc` 里的国内镜像下载 Electron 与 NSIS 工具。
-- Windows 安装包需要在 Windows 上打；也可以在 GitHub 仓库的 Actions →「打包与发布」→ Run workflow 选「只打包不发布」，自动在 Windows / Linux 上打包，产物在该次运行的 Artifacts 里下载。
-- 安装版与开发版共用同一个数据目录，装上之后便笺都在。
+### Release
 
-### 发布新版本与自动更新
+Releases are fully automated by [`.github/workflows/build.yml`](.github/workflows/build.yml). Open **Actions**, choose the 打包与发布 (build and release) workflow, click **Run workflow** and pick `patch`, `minor` or `major`. It bumps the version, runs the tests, tags the commit, builds for Windows and Linux, and publishes the release. Release notes are taken from the unreleased section at the top of [`CHANGELOG.md`](CHANGELOG.md).
 
-不需要手动打标签，两种方式任选：
-
-1. **在 GitHub 上点一下**：仓库 → Actions →「打包与发布」→ Run workflow，选 `patch`（修复）/ `minor`（新功能）/ `major`（大改）。如果版本号已改好、还没有打标签，选「发布当前版本」即可使用这个版本号重新运行检查和发布。
-2. **在本地**：
-
-   ```bash
-   pnpm release patch   # 也可以写 minor / major，或直接写版本号 pnpm release 1.2.0
-   git push origin main
-   ```
-
-之后全部自动完成（`.github/workflows/build.yml`）：改版本号并提交到 main → 跑一遍测试（不通过就不发布）→ 打标签 → 在 Windows / Linux 上打包 → 上传安装包和更新信息（`latest.yml` 等）→ 正式发布。选「只打包不发布」时只打包，产物在这次运行的 Artifacts 里。
-
-**更新说明**也是自动生成的：开头是下载表，下面是这一版改了什么，内容取自 [`CHANGELOG.md`](CHANGELOG.md) 的「未发布」一节，发布时这一节会自动改名为这个版本号。平时改完东西往「未发布」里记一笔即可；没写的话，就用上一版以来的提交说明。
-
-已安装的 FloatNote（安装版、Linux AppImage）在启动 15 秒后及之后每 6 小时检查一次，有新版本就在后台下载，下载完弹出「重启更新」，不点的话下次退出时自动安装。设置面板里可以看到当前版本、手动检查更新。开发版（`pnpm start`）和便携版不会自动更新。
-
-> 更新包从 GitHub 下载，国内网络下可能较慢或失败，失败时会在 6 小时后自动重试，也可以在设置里手动重试，或去 Releases 页面手动下载安装。
-
-### 文件结构
+### Project layout
 
 ```
-main/main.js       主进程：数据（增量合并 + 广播）、便笺本与桌面便笺窗口、贴边收起、快速捕捉、托盘、全局快捷键
-main/preload.js    contextBridge 暴露的受限 API
-renderer/life.js   完成奖励、撕纸动画（纯表现层）
-renderer/history.js 撤销 / 重做（按便笺的快照栈）
-renderer/paste.js  粘贴清理、纯文本粘贴、链接识别
-renderer/index.html 便笺结构
-renderer/styles.css 便笺外观与动效
-renderer/core.js   全局状态、DOM 引用、工具函数（最先加载）
-renderer/sync.js   多窗口数据同步（按字段发送 / 合并增量）
-renderer/notes.js  新建 / 删除 / 切换、最近删除、贴到桌面
-renderer/appearance.js 主题、纸张、外观跟随、字号、状态栏
-renderer/menu.js   切换菜单、重命名、标签、提示条
-renderer/editor.js 待办、缩进、Markdown、图片、粘贴、链接、快捷键
-renderer/window.js 窗口按钮、设置面板、拖动 / 缩放、贴边收起、快速捕捉
-renderer/app.js    启动流程
-renderer/fonts/    打包的字体（霞鹜文楷，附 OFL 许可证）
-scripts/start.js   启动器（处理 ELECTRON_RUN_AS_NODE）
-scripts/release.js 本地准备发布（改版本号、提交）；bump.js 改版本号，release-notes.js 生成 Release 说明
-CHANGELOG.md       更新记录（「未发布」一节就是下一版的 Release 说明）
-build/installer.nsh Windows 安装程序的补充脚本（安装 / 更新后刷新图标缓存）
-docs/images/       README 里的截图
-tests/             端到端测试（Playwright 驱动真实 Electron）
-assets/icon.svg    图标源文件（48px 及以上用）；icon-small.svg 为 16–32px 简化版（托盘 / 任务栏）
-assets/icon-*.png  各尺寸单独渲染的图标；icon.ico 打包了 16–256 各尺寸，供 Windows 使用
+main/        Main process: data store and merge, windows, docking, tray, hotkeys, updates
+renderer/    The note UI: editor, menus, themes, undo history, paste cleanup
+scripts/     Start, package and release helpers
+tests/       End-to-end tests
+assets/      App icons
+docs/images/ Screenshots used in the READMEs
 ```
 
-## 已知限制
+## Known limitations
 
-- 全局快捷键可在设置面板里点击录制修改；首次启动若默认组合被占用，会依次回退到备用组合。
-- 磨砂玻璃为 CSS 实现（半透明 + 高光 + 颗粒），透出桌面颜色与明暗，但**不模糊桌面内容**。实测本机 Electron 45 的 `backgroundMaterial: acrylic/mica` 渲染为不透明灰块（未采样背景），而 `desktopCapturer` 单帧耗时约 1 秒，无法用于实时底衬，故未采用真实背景模糊。
+- The frosted-glass look is drawn with CSS (translucency, highlights and grain). It lets the desktop's colors show through but does not blur what is behind the window.
+- Quick capture copies the selection automatically only on Windows.
+- The interface is available in Simplified Chinese only.
+
+## License
+
+Code is released under the [MIT License](LICENSE). The bundled LXGW WenKai Screen font is licensed under the SIL Open Font License 1.1; see `renderer/fonts/lxgw-wenkai-screen/`.
